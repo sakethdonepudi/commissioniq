@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CommissionIQ — MF Commission Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --navy: #0f1f38;
+  --navy-mid: #1b3a5c;
+  --navy-light: #2e5f8a;
+  --gold: #c9a84c;
+  --gold-light: #e8c97a;
+  --cream: #faf8f3;
+  --cream-dark: #f0ece0;
+  --text: #1a1a2e;
+  --text-muted: #5a6374;
+  --green: #1a7a4a;
+  --green-bg: #e8f5ee;
+  --red: #b53030;
+  --red-bg: #fdeaea;
+  --border: #d8d3c8;
+  --shadow: 0 4px 24px rgba(15,31,56,0.10);
+  --shadow-lg: 0 12px 48px rgba(15,31,56,0.16);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Inter',sans-serif;
+  background:var(--cream);
+  color:var(--text);
+  min-height:100vh;
+}
+
+/* ── NAV ── */
+nav{
+  background:var(--navy);
+  padding:0 2.5rem;
+  display:flex;align-items:center;justify-content:space-between;
+  height:62px;
+  position:sticky;top:0;z-index:100;
+  border-bottom:2px solid var(--gold);
+}
+.logo{
+  font-family:'DM Serif Display',serif;
+  color:var(--gold-light);
+  font-size:1.45rem;
+  letter-spacing:0.02em;
+}
+.logo span{color:#fff;opacity:.6;font-size:.85rem;font-family:'Inter',sans-serif;font-weight:300;margin-left:.6rem;}
+.nav-tabs{display:flex;gap:.25rem}
+.tab-btn{
+  background:none;border:none;
+  color:rgba(255,255,255,.55);
+  font-family:'Inter',sans-serif;font-size:.82rem;font-weight:500;
+  padding:.5rem 1.1rem;border-radius:6px;cursor:pointer;
+  transition:.2s;letter-spacing:.03em;
+}
+.tab-btn:hover{color:#fff;background:rgba(255,255,255,.07)}
+.tab-btn.active{color:var(--gold-light);background:rgba(201,168,76,.12)}
+
+/* ── LAYOUT ── */
+.page{display:none;padding:2.5rem;max-width:1300px;margin:0 auto;animation:fadeUp .3s ease}
+.page.active{display:block}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── CARDS ── */
+.card{
+  background:#fff;border-radius:14px;
+  border:1px solid var(--border);
+  box-shadow:var(--shadow);
+  padding:1.8rem 2rem;
+  margin-bottom:1.5rem;
+}
+.card-title{
+  font-family:'DM Serif Display',serif;
+  font-size:1.2rem;color:var(--navy-mid);
+  margin-bottom:1.2rem;
+  display:flex;align-items:center;gap:.6rem;
+}
+.card-title .icon{
+  width:32px;height:32px;border-radius:8px;
+  background:var(--navy-mid);color:var(--gold-light);
+  display:flex;align-items:center;justify-content:center;
+  font-size:1rem;flex-shrink:0;
+}
+
+/* ── GRID ── */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem}
+
+/* ── STAT BOXES ── */
+.stat-box{
+  background:#fff;border-radius:12px;border:1px solid var(--border);
+  padding:1.2rem 1.5rem;
+  box-shadow:var(--shadow);
+}
+.stat-label{font-size:.72rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem}
+.stat-val{font-family:'DM Serif Display',serif;font-size:1.8rem;color:var(--navy)}
+.stat-sub{font-size:.76rem;color:var(--text-muted);margin-top:.3rem}
+.stat-box.gold{border-top:3px solid var(--gold)}
+.stat-box.green{border-top:3px solid var(--green)}
+.stat-box.red{border-top:3px solid var(--red)}
+.stat-box.navy{border-top:3px solid var(--navy-mid)}
+
+/* ── UPLOAD ZONE ── */
+.upload-zone{
+  border:2px dashed var(--border);
+  border-radius:12px;padding:2rem;
+  text-align:center;cursor:pointer;
+  transition:.2s;background:var(--cream);
+}
+.upload-zone:hover,.upload-zone.dragover{
+  border-color:var(--navy-light);background:#eef4fb;
+}
+.upload-zone.done{border-color:var(--green);background:var(--green-bg)}
+.upload-icon{font-size:2rem;margin-bottom:.6rem}
+.upload-label{font-size:.9rem;color:var(--text-muted);margin-bottom:.4rem}
+.upload-label strong{color:var(--navy-mid)}
+.upload-hint{font-size:.75rem;color:var(--text-muted)}
+.upload-zone input[type=file]{display:none}
+
+/* ── BUTTONS ── */
+.btn{
+  display:inline-flex;align-items:center;gap:.4rem;
+  padding:.6rem 1.4rem;border-radius:8px;
+  font-size:.85rem;font-weight:600;cursor:pointer;
+  border:none;transition:.2s;letter-spacing:.02em;
+}
+.btn-primary{background:var(--navy-mid);color:#fff}
+.btn-primary:hover{background:var(--navy)}
+.btn-gold{background:var(--gold);color:var(--navy)}
+.btn-gold:hover{background:var(--gold-light)}
+.btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--text)}
+.btn-outline:hover{border-color:var(--navy-light);color:var(--navy-mid)}
+.btn-sm{padding:.4rem 1rem;font-size:.78rem}
+.btn-danger{background:var(--red);color:#fff}
+.btn-green{background:var(--green);color:#fff}
+
+/* ── FORM ── */
+.form-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:.7rem;align-items:end;margin-bottom:.6rem}
+.form-group{display:flex;flex-direction:column;gap:.3rem}
+.form-label{font-size:.75rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em}
+.form-input,.form-select{
+  border:1.5px solid var(--border);border-radius:8px;
+  padding:.55rem .85rem;font-size:.88rem;
+  font-family:'Inter',sans-serif;color:var(--text);
+  background:#fff;transition:.15s;
+}
+.form-input:focus,.form-select:focus{outline:none;border-color:var(--navy-light)}
+.form-input::placeholder{color:#bbb}
+
+/* ── TABLE ── */
+.table-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:.83rem}
+thead th{
+  background:var(--navy);color:#fff;
+  padding:.75rem 1rem;text-align:left;
+  font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;
+  position:sticky;top:0;
+}
+tbody tr{border-bottom:1px solid #f0ece0;transition:.15s}
+tbody tr:hover{background:#f7f4ed}
+tbody td{padding:.65rem 1rem;color:var(--text)}
+tbody tr:last-child{border-bottom:none}
+.td-num{text-align:right;font-family:'DM Mono',monospace;font-size:.82rem}
+.td-amc{font-weight:600;color:var(--navy-mid)}
+.pill{
+  display:inline-block;padding:.2rem .65rem;border-radius:20px;
+  font-size:.72rem;font-weight:600;letter-spacing:.04em;
+}
+.pill-green{background:var(--green-bg);color:var(--green)}
+.pill-red{background:var(--red-bg);color:var(--red)}
+.pill-yellow{background:#fff8e1;color:#b07800}
+.pill-blue{background:#e8f0fe;color:#1a56a8}
+
+/* ── BADGE ── */
+.badge{
+  display:inline-flex;align-items:center;gap:.3rem;
+  padding:.3rem .8rem;border-radius:20px;
+  font-size:.76rem;font-weight:600;
+}
+.badge-ok{background:var(--green-bg);color:var(--green)}
+.badge-warn{background:#fff8e1;color:#b07800}
+.badge-err{background:var(--red-bg);color:var(--red)}
+
+/* ── PROGRESS ── */
+.progress-bar{height:6px;background:#e8e3d8;border-radius:3px;overflow:hidden;margin-top:.5rem}
+.progress-fill{height:100%;border-radius:3px;background:var(--green);transition:.5s}
+
+/* ── SECTION HEADERS ── */
+.section-header{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:1.2rem;
+}
+.section-title{
+  font-family:'DM Serif Display',serif;
+  font-size:1.5rem;color:var(--navy);
+}
+.section-sub{font-size:.85rem;color:var(--text-muted);margin-top:.2rem}
+
+/* ── TOAST ── */
+.toast-container{position:fixed;bottom:1.5rem;right:1.5rem;z-index:999;display:flex;flex-direction:column;gap:.5rem}
+.toast{
+  background:var(--navy);color:#fff;
+  padding:.75rem 1.2rem;border-radius:10px;
+  font-size:.85rem;box-shadow:var(--shadow-lg);
+  animation:slideIn .25s ease;
+  display:flex;align-items:center;gap:.6rem;
+}
+.toast.success{background:var(--green)}
+.toast.error{background:var(--red)}
+@keyframes slideIn{from{transform:translateX(50px);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* ── EMPTY STATE ── */
+.empty-state{
+  text-align:center;padding:3rem;color:var(--text-muted);
+}
+.empty-state .icon{font-size:2.5rem;margin-bottom:.8rem}
+.empty-state p{font-size:.9rem}
+
+/* ── FILTER BAR ── */
+.filter-bar{
+  display:flex;gap:.7rem;align-items:center;
+  flex-wrap:wrap;margin-bottom:1.2rem;
+}
+.filter-bar .form-input{flex:1;min-width:200px}
+
+/* ── MONTH BADGE ── */
+.month-label{
+  font-family:'DM Mono',monospace;font-size:.78rem;
+  background:var(--cream-dark);border:1px solid var(--border);
+  padding:.3rem .7rem;border-radius:6px;color:var(--navy-mid);
+}
+
+/* ── SUMMARY RIBBON ── */
+.ribbon{
+  background:var(--navy);color:#fff;
+  border-radius:12px;padding:1.2rem 1.8rem;
+  display:flex;gap:2.5rem;align-items:center;
+  margin-bottom:1.5rem;
+  box-shadow:var(--shadow-lg);
+}
+.ribbon-item{text-align:center}
+.ribbon-val{font-family:'DM Serif Display',serif;font-size:1.6rem;color:var(--gold-light)}
+.ribbon-lbl{font-size:.7rem;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.08em;margin-top:.15rem}
+.ribbon-divider{width:1px;background:rgba(255,255,255,.15);align-self:stretch}
+
+/* ── MODAL ── */
+.modal-overlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(10,20,40,.6);z-index:200;
+  align-items:center;justify-content:center;
+}
+.modal-overlay.open{display:flex}
+.modal{
+  background:#fff;border-radius:16px;
+  padding:2rem;min-width:480px;max-width:600px;width:90%;
+  box-shadow:var(--shadow-lg);animation:fadeUp .25s ease;
+}
+.modal-title{font-family:'DM Serif Display',serif;font-size:1.25rem;color:var(--navy);margin-bottom:1.2rem}
+.modal-footer{display:flex;gap:.75rem;justify-content:flex-end;margin-top:1.5rem}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">CommissionIQ <span>Mutual Fund Trail & Upfront Tracker</span></div>
+  <div class="nav-tabs">
+    <button class="tab-btn active" onclick="showPage('dashboard')">📊 Dashboard</button>
+    <button class="tab-btn" onclick="showPage('upload')">📤 Upload Reports</button>
+    <button class="tab-btn" onclick="showPage('rates')">⚙️ Rate Master</button>
+    <button class="tab-btn" onclick="showPage('detail')">🔍 Scheme Detail</button>
+  </div>
+</nav>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ═══════════════════ DASHBOARD ═══════════════════ -->
+<div class="page active" id="page-dashboard">
+  <div class="section-header">
+    <div>
+      <div class="section-title">Commission Dashboard</div>
+      <div class="section-sub" id="dashMonthLabel">Upload your reports to see this month's expected commissions</div>
+    </div>
+    <div style="display:flex;gap:.7rem;align-items:center">
+      <select class="form-select" id="monthFilter" onchange="renderDashboard()" style="font-size:.83rem">
+        <option value="">All Months</option>
+      </select>
+      <button class="btn btn-outline btn-sm" onclick="exportDashboard()">⬇ Export CSV</button>
+    </div>
+  </div>
+
+  <div id="ribbonArea"></div>
+  <div id="statsArea" class="grid-4" style="margin-bottom:1.5rem"></div>
+
+  <div class="card">
+    <div class="card-title"><div class="icon">🏦</div>Expected Commission by AMC</div>
+    <div class="filter-bar">
+      <input class="form-input" placeholder="Search AMC or Fund…" id="dashSearch" oninput="renderDashboard()"/>
+      <select class="form-select" id="dashAmcFilter" onchange="renderDashboard()" style="width:200px">
+        <option value="">All AMCs</option>
+      </select>
+    </div>
+    <div id="dashTable"><div class="empty-state"><div class="icon">📭</div><p>Upload your AUM & Transaction reports to calculate expected commissions.</p></div></div>
+  </div>
+</div>
+
+<!-- ═══════════════════ UPLOAD ═══════════════════ -->
+<div class="page" id="page-upload">
+  <div class="section-header">
+    <div>
+      <div class="section-title">Upload Reports</div>
+      <div class="section-sub">Upload your WealthMagic exports each month. Columns must match the provided templates.</div>
+    </div>
+    <a href="#" onclick="downloadTemplates()" class="btn btn-outline btn-sm">⬇ Download Excel Templates</a>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title"><div class="icon">📋</div>AUM Report</div>
+      <div class="upload-zone" id="aumZone" onclick="document.getElementById('aumFile').click()" 
+           ondragover="dragOver(event,'aumZone')" ondragleave="dragLeave('aumZone')" ondrop="dropFile(event,'aum')">
+        <input type="file" id="aumFile" accept=".xlsx,.csv" onchange="handleFile(event,'aum')"/>
+        <div class="upload-icon">📊</div>
+        <div class="upload-label"><strong>Click or drag</strong> AUM Report here</div>
+        <div class="upload-hint">Accepts .xlsx or .csv • Columns: Group Code, Investor, AMC, AMC FUND, Folio No., AUM, NAV Date…</div>
+      </div>
+      <div id="aumStatus" style="margin-top:.8rem"></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><div class="icon">🔄</div>Transaction Report</div>
+      <div class="upload-zone" id="transZone" onclick="document.getElementById('transFile').click()"
+           ondragover="dragOver(event,'transZone')" ondragleave="dragLeave('transZone')" ondrop="dropFile(event,'trans')">
+        <input type="file" id="transFile" accept=".xlsx,.csv" onchange="handleFile(event,'trans')"/>
+        <div class="upload-icon">🧾</div>
+        <div class="upload-label"><strong>Click or drag</strong> Transaction Report here</div>
+        <div class="upload-hint">Accepts .xlsx or .csv • Columns: Trans. Date, AMC, AMC FUND, Folio No., Trans. Type, Amount…</div>
+      </div>
+      <div id="transStatus" style="margin-top:.8rem"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><div class="icon">⚙️</div>Processing Options</div>
+    <div class="grid-3">
+      <div class="form-group">
+        <label class="form-label">Report Month</label>
+        <input type="month" class="form-input" id="reportMonth" value=""/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">AUM Snapshot Date (from report)</label>
+        <input type="date" class="form-input" id="aumDate"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Apply trail to</label>
+        <select class="form-select" id="trailBase">
+          <option value="aum">Month-end AUM (from AUM report, adjusted)</option>
+          <option value="avg">Average of opening + closing AUM</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:1.2rem;display:flex;gap:.75rem">
+      <button class="btn btn-primary" onclick="processReports()">⚡ Calculate Expected Commissions</button>
+      <button class="btn btn-outline" onclick="clearData()">🗑 Clear All Data</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><div class="icon">📌</div>Column Mapping Guide</div>
+    <div class="grid-2">
+      <div>
+        <div style="font-size:.8rem;font-weight:700;color:var(--navy-mid);margin-bottom:.6rem;text-transform:uppercase;letter-spacing:.06em">AUM Report — Key Columns</div>
+        <table style="font-size:.8rem">
+          <thead><tr><th>Column</th><th>Used For</th></tr></thead>
+          <tbody>
+            <tr><td class="td-amc">AMC</td><td>Commission grouping</td></tr>
+            <tr><td class="td-amc">AMC FUND</td><td>Rate master lookup</td></tr>
+            <tr><td class="td-amc">Folio No.</td><td>Join with transactions</td></tr>
+            <tr><td class="td-amc">AUM</td><td>Trail calculation base</td></tr>
+            <tr><td class="td-amc">NAV Date</td><td>AUM staleness check</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div style="font-size:.8rem;font-weight:700;color:var(--navy-mid);margin-bottom:.6rem;text-transform:uppercase;letter-spacing:.06em">Transaction Report — Key Columns</div>
+        <table style="font-size:.8rem">
+          <thead><tr><th>Column</th><th>Used For</th></tr></thead>
+          <tbody>
+            <tr><td class="td-amc">Trans. Date</td><td>Filter by month, AUM adjust</td></tr>
+            <tr><td class="td-amc">Trans. Type</td><td>In/out/upfront eligibility</td></tr>
+            <tr><td class="td-amc">Amount</td><td>Upfront commission base</td></tr>
+            <tr><td class="td-amc">AMC FUND</td><td>Rate master lookup</td></tr>
+            <tr><td class="td-amc">Folio No.</td><td>Join with AUM</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ RATE MASTER ═══════════════════ -->
+<div class="page" id="page-rates">
+  <div class="section-header">
+    <div>
+      <div class="section-title">Rate Master</div>
+      <div class="section-sub">Define upfront & trail commission rates per AMC and fund. Set up once, update when AMC changes rates.</div>
+    </div>
+    <div style="display:flex;gap:.7rem">
+      <button class="btn btn-outline btn-sm" onclick="importRates()">⬆ Import CSV</button>
+      <input type="file" id="rateImportFile" accept=".csv" style="display:none" onchange="handleRateImport(event)"/>
+      <button class="btn btn-outline btn-sm" onclick="exportRates()">⬇ Export CSV</button>
+      <button class="btn btn-primary btn-sm" onclick="openAddRate()">+ Add Rate</button>
+    </div>
+  </div>
+
+  <div class="card" style="padding:1.2rem 1.6rem">
+    <div class="filter-bar">
+      <input class="form-input" placeholder="Search AMC or Fund…" id="rateSearch" oninput="renderRateTable()"/>
+      <select class="form-select" id="rateAmcFilter" onchange="renderRateTable()" style="width:200px">
+        <option value="">All AMCs</option>
+      </select>
+      <span id="rateCount" class="month-label">0 rates</span>
+    </div>
+    <div id="rateTable"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════ SCHEME DETAIL ═══════════════════ -->
+<div class="page" id="page-detail">
+  <div class="section-header">
+    <div>
+      <div class="section-title">Scheme-wise Detail</div>
+      <div class="section-sub">Folio-level breakdown of AUM, adjusted AUM, and expected commissions.</div>
+    </div>
+    <button class="btn btn-outline btn-sm" onclick="exportDetail()">⬇ Export CSV</button>
+  </div>
+  <div class="card">
+    <div class="filter-bar">
+      <input class="form-input" placeholder="Search AMC, Fund or Folio…" id="detailSearch" oninput="renderDetailTable()"/>
+      <select class="form-select" id="detailAmcFilter" onchange="renderDetailTable()" style="width:200px">
+        <option value="">All AMCs</option>
+      </select>
+    </div>
+    <div id="detailTable"><div class="empty-state"><div class="icon">🔍</div><p>Process your reports first to see scheme-level detail.</p></div></div>
+  </div>
+</div>
+
+<!-- ═══════════════════ ADD/EDIT RATE MODAL ═══════════════════ -->
+<div class="modal-overlay" id="rateModal">
+  <div class="modal">
+    <div class="modal-title" id="modalTitle">Add Commission Rate</div>
+    <div class="grid-2" style="gap:.9rem">
+      <div class="form-group" style="grid-column:1/-1">
+        <label class="form-label">AMC Name</label>
+        <input class="form-input" id="m_amc" placeholder="e.g. PPFAS Mutual Fund"/>
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label class="form-label">AMC Fund Name (must match WealthMagic exactly)</label>
+        <input class="form-input" id="m_fund" placeholder="e.g. Parag Parikh Flexi Cap Fund"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fund Category</label>
+        <select class="form-select" id="m_cat">
+          <option>Equity</option><option>Debt</option><option>Hybrid</option>
+          <option>ELSS</option><option>Index</option><option>Liquid</option>
+          <option>FoF</option><option>Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fund Class</label>
+        <select class="form-select" id="m_class">
+          <option>Regular</option><option>Direct</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Upfront % (on purchase)</label>
+        <input class="form-input" id="m_upfront" type="number" step="0.001" min="0" placeholder="0.50"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Trail % (Annual)</label>
+        <input class="form-input" id="m_trail" type="number" step="0.001" min="0" placeholder="1.00"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Effective From</label>
+        <input class="form-input" id="m_from" type="date"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <input class="form-input" id="m_notes" placeholder="Optional note"/>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRate()">Save Rate</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════
+let state = {
+  rates: JSON.parse(localStorage.getItem('ciq_rates') || '[]'),
+  aumData: null,
+  transData: null,
+  results: null,
+  editIdx: -1,
+};
+
+// Trans type classification
+const INFLOW = ['PUR','SIP','STP-I','DIV-R','REV-I','STPIN','SIPIN','PURCHASE','NEW PURCHASE'];
+const OUTFLOW = ['RED','STP-O','SWP','SWP-O','REDEMPTION','STPOUT','SWPOUT'];
+const UPFRONT_ELIGIBLE = ['PUR','SIP','STP-I','PURCHASE','NEW PURCHASE','SIPIN','STPIN'];
+
+function isInflow(t){ return INFLOW.includes(t?.toUpperCase()?.trim()) }
+function isOutflow(t){ return OUTFLOW.includes(t?.toUpperCase()?.trim()) }
+function isUpfrontEligible(t){ return UPFRONT_ELIGIBLE.includes(t?.toUpperCase()?.trim()) }
+
+// ═══════════════════════════════════════════
+//  NAV
+// ═══════════════════════════════════════════
+function showPage(p){
+  document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));
+  document.getElementById('page-'+p).classList.add('active');
+  document.querySelectorAll('.tab-btn')[['dashboard','upload','rates','detail'].indexOf(p)].classList.add('active');
+  if(p==='dashboard') renderDashboard();
+  if(p==='rates') renderRateTable();
+  if(p==='detail') renderDetailTable();
+}
+
+// ═══════════════════════════════════════════
+//  FILE HANDLING
+// ═══════════════════════════════════════════
+function dragOver(e,id){e.preventDefault();document.getElementById(id).classList.add('dragover')}
+function dragLeave(id){document.getElementById(id).classList.remove('dragover')}
+function dropFile(e,type){
+  e.preventDefault();
+  const id = type==='aum'?'aumZone':'transZone';
+  dragLeave(id);
+  const file = e.dataTransfer.files[0];
+  if(file) parseFile(file,type);
+}
+
+function handleFile(e,type){
+  const file = e.target.files[0];
+  if(file) parseFile(file,type);
+}
+
+function parseFile(file,type){
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try{
+      const wb = XLSX.read(e.target.result,{type:'binary',cellDates:true});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(ws,{defval:''});
+      if(type==='aum'){
+        state.aumData = data;
+        showStatus('aumStatus',`✅ ${data.length} rows loaded from ${file.name}`,'green');
+        document.getElementById('aumZone').classList.add('done');
+      } else {
+        state.transData = data;
+        showStatus('transStatus',`✅ ${data.length} rows loaded from ${file.name}`,'green');
+        document.getElementById('transZone').classList.add('done');
+      }
+      toast(`${type==='aum'?'AUM':'Transaction'} report loaded (${data.length} rows)`, 'success');
+    }catch(err){
+      toast('Error reading file: '+err.message,'error');
+    }
+  };
+  reader.readAsBinaryString(file);
+}
+
+function showStatus(id,msg,type){
+  const el = document.getElementById(id);
+  const colors = {green:'var(--green)',red:'var(--red)',blue:'var(--navy-mid)'};
+  el.innerHTML = `<div style="font-size:.82rem;color:${colors[type]||colors.blue};padding:.4rem .6rem;background:${type==='green'?'var(--green-bg)':'#f0f0f0'};border-radius:6px">${msg}</div>`;
+}
+
+// ═══════════════════════════════════════════
+//  CORE CALCULATION
+// ═══════════════════════════════════════════
+function processReports(){
+  if(!state.aumData){ toast('Please upload AUM report first','error'); return; }
+  if(!state.transData){ toast('Please upload Transaction report first','error'); return; }
+  if(state.rates.length===0){ toast('Please add commission rates in Rate Master first','error'); return; }
+
+  const reportMonth = document.getElementById('reportMonth').value; // YYYY-MM
+  const aumDateStr = document.getElementById('aumDate').value;
+
+  // Normalise column names (trim spaces, handle slight naming differences)
+  const norm = (s) => String(s||'').trim();
+
+  // Build folio-level AUM map
+  const folioAUM = {};
+  state.aumData.forEach(row => {
+    const key = norm(row['Folio No.']||row['Folio No']||row['FolioNo']||row['folio_no']);
+    const amc = norm(row['AMC']);
+    const fund = norm(row['AMC FUND']||row['AMC Fund']||row['AMCFUND']);
+    const aum = parseFloat(row['AUM'])||0;
+    const navDate = row['NAV Date']||row['NAVDate']||'';
+    if(key) folioAUM[key] = {amc,fund,aum,navDate,investor:norm(row['Investor']),grpCode:norm(row['Group Code']),category:norm(row['Fund Category']),fundClass:norm(row['Fund Class'])};
+  });
+
+  // Filter transactions by selected month
+  let transactions = state.transData;
+  if(reportMonth){
+    const [yr,mo] = reportMonth.split('-').map(Number);
+    transactions = transactions.filter(row => {
+      const d = parseTransDate(row['Trans. Date']||row['Trans Date']||row['TransDate']||'');
+      return d && d.getFullYear()===yr && d.getMonth()+1===mo;
+    });
+  }
+
+  // Build AUM adjustment map: folio -> {purchases, redemptions}
+  const aumAdj = {};
+  const upfrontMap = {}; // key: amc+fund -> upfront amounts
+
+  transactions.forEach(row => {
+    const folio = norm(row['Folio No.']||row['Folio No']||row['FolioNo']);
+    const ttype = norm(row['Trans. Type']||row['TransType']||row['Tran Type']||row['Trans Type']);
+    const amount = parseFloat(row['Amount'])||0;
+    const amc = norm(row['AMC']);
+    const fund = norm(row['AMC FUND']||row['AMC Fund']);
+    const transDate = parseTransDate(row['Trans. Date']||row['Trans Date']||'');
+
+    // Only adjust AUM for transactions AFTER the AUM report date
+    const shouldAdjust = !aumDateStr || !transDate || transDate > new Date(aumDateStr);
+
+    if(!aumAdj[folio]) aumAdj[folio]={purchases:0,redemptions:0};
+    if(shouldAdjust){
+      if(isInflow(ttype)) aumAdj[folio].purchases += amount;
+      if(isOutflow(ttype)) aumAdj[folio].redemptions += amount;
+    }
+
+    // Upfront
+    if(isUpfrontEligible(ttype) && amount>0){
+      const key = amc+'||'+fund;
+      if(!upfrontMap[key]) upfrontMap[key]={amc,fund,amount:0,transactions:[]};
+      upfrontMap[key].amount += amount;
+      upfrontMap[key].transactions.push({folio,amount,ttype,date:transDate});
+    }
+  });
+
+  // Rate lookup
+  function findRate(amc,fund){
+    const matches = state.rates.filter(r =>
+      norm(r.amc).toLowerCase()===amc.toLowerCase() &&
+      norm(r.fund).toLowerCase()===fund.toLowerCase()
+    );
+    if(matches.length===0){
+      // Fuzzy: try AMC match only, then return first
+      const amcMatch = state.rates.filter(r=>norm(r.amc).toLowerCase()===amc.toLowerCase());
+      if(amcMatch.length>0) return {trail:amcMatch[0].trail,upfront:amcMatch[0].upfront,fuzzy:true};
+      return null;
+    }
+    return matches[0];
+  }
+
+  // Build results
+  const folioResults = [];
+  Object.entries(folioAUM).forEach(([folio,info])=>{
+    const adj = aumAdj[folio]||{purchases:0,redemptions:0};
+    const adjustedAUM = Math.max(0, info.aum + adj.purchases - adj.redemptions);
+    const rate = findRate(info.amc, info.fund);
+
+    const trailMonthly = rate ? (adjustedAUM * (parseFloat(rate.trail)||0) / 100 / 12) : 0;
+
+    folioResults.push({
+      folio, investor:info.investor, grpCode:info.grpCode,
+      amc:info.amc, fund:info.fund,
+      category:info.category, fundClass:info.fundClass,
+      originalAUM:info.aum,
+      purchases:adj.purchases, redemptions:adj.redemptions,
+      adjustedAUM,
+      trailRate:rate?(parseFloat(rate.trail)||0):null,
+      upfrontRate:rate?(parseFloat(rate.upfront)||0):null,
+      trailMonthly,
+      rateFound:!!rate, fuzzyMatch:rate?.fuzzy||false,
+    });
+  });
+
+  // Upfront commissions
+  const upfrontResults = [];
+  Object.values(upfrontMap).forEach(item=>{
+    const rate = findRate(item.amc,item.fund);
+    const upfrontComm = rate ? (item.amount * (parseFloat(rate.upfront)||0) / 100) : 0;
+    upfrontResults.push({
+      amc:item.amc, fund:item.fund,
+      purchaseAmount:item.amount,
+      upfrontRate:rate?(parseFloat(rate.upfront)||0):null,
+      upfrontComm,
+      rateFound:!!rate,
+    });
+  });
+
+  state.results = {folioResults, upfrontResults, reportMonth};
+
+  // Populate month filter
+  if(reportMonth){
+    const sel = document.getElementById('monthFilter');
+    const exists = Array.from(sel.options).some(o=>o.value===reportMonth);
+    if(!exists){
+      const opt = document.createElement('option');
+      opt.value=reportMonth; opt.text=formatMonth(reportMonth);
+      sel.appendChild(opt);
+      sel.value=reportMonth;
+    }
+  }
+
+  toast('✅ Commissions calculated successfully!','success');
+  showPage('dashboard');
+}
+
+function parseTransDate(val){
+  if(!val) return null;
+  if(val instanceof Date) return val;
+  const s = String(val).trim();
+  // Try DD-MMM-YYYY
+  const m = s.match(/(\d{1,2})[\/\-]([A-Za-z]+|\d{1,2})[\/\-](\d{2,4})/);
+  if(m){
+    const months={'jan':0,'feb':1,'mar':2,'apr':3,'may':4,'jun':5,'jul':6,'aug':7,'sep':8,'oct':9,'nov':10,'dec':11};
+    const mon = months[m[2].toLowerCase().slice(0,3)];
+    if(mon!==undefined) return new Date(parseInt(m[3]),mon,parseInt(m[1]));
+    return new Date(parseInt(m[3]),parseInt(m[2])-1,parseInt(m[1]));
+  }
+  const d = new Date(s);
+  return isNaN(d)?null:d;
+}
+
+function formatMonth(ym){
+  if(!ym) return '';
+  const [y,m]=ym.split('-');
+  const names=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${names[parseInt(m)-1]} ${y}`;
+}
+
+// ═══════════════════════════════════════════
+//  DASHBOARD RENDER
+// ═══════════════════════════════════════════
+function renderDashboard(){
+  if(!state.results){
+    document.getElementById('ribbonArea').innerHTML='';
+    document.getElementById('statsArea').innerHTML='';
+    document.getElementById('dashTable').innerHTML='<div class="empty-state"><div class="icon">📭</div><p>Upload your AUM & Transaction reports to calculate expected commissions.</p></div>';
+    return;
+  }
+
+  const {folioResults, upfrontResults} = state.results;
+  const search = document.getElementById('dashSearch').value.toLowerCase();
+  const amcF = document.getElementById('dashAmcFilter').value;
+
+  // Totals
+  const totalTrail = folioResults.reduce((s,r)=>s+r.trailMonthly,0);
+  const totalUpfront = upfrontResults.reduce((s,r)=>s+r.upfrontComm,0);
+  const totalAUM = folioResults.reduce((s,r)=>s+r.adjustedAUM,0);
+  const noRate = folioResults.filter(r=>!r.rateFound).length;
+
+  // Ribbon
+  document.getElementById('ribbonArea').innerHTML = `
+    <div class="ribbon">
+      <div class="ribbon-item"><div class="ribbon-val">${fmt(totalTrail)}</div><div class="ribbon-lbl">Expected Trail (This Month)</div></div>
+      <div class="ribbon-divider"></div>
+      <div class="ribbon-item"><div class="ribbon-val">${fmt(totalUpfront)}</div><div class="ribbon-lbl">Expected Upfront</div></div>
+      <div class="ribbon-divider"></div>
+      <div class="ribbon-item"><div class="ribbon-val">${fmt(totalTrail+totalUpfront)}</div><div class="ribbon-lbl">Total Expected Commission</div></div>
+      <div class="ribbon-divider"></div>
+      <div class="ribbon-item"><div class="ribbon-val">${fmtCr(totalAUM)}</div><div class="ribbon-lbl">Total Adjusted AUM</div></div>
+      <div class="ribbon-divider"></div>
+      <div class="ribbon-item"><div class="ribbon-val">${noRate}</div><div class="ribbon-lbl">Folios Missing Rate</div></div>
+    </div>`;
+
+  // Populate AMC filter
+  const amcs = [...new Set(folioResults.map(r=>r.amc))].sort();
+  const sel = document.getElementById('dashAmcFilter');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All AMCs</option>'+amcs.map(a=>`<option value="${a}" ${a===cur?'selected':''}>${a}</option>`).join('');
+
+  // Group by AMC+Fund
+  const grouped = {};
+  folioResults.forEach(r=>{
+    const key = r.amc+'||'+r.fund;
+    if(!grouped[key]) grouped[key]={amc:r.amc,fund:r.fund,category:r.category,
+      totalAUM:0,trailRate:r.trailRate,upfrontRate:r.upfrontRate,
+      trailMonthly:0,folios:0,rateFound:r.rateFound,fuzzy:r.fuzzyMatch};
+    grouped[key].totalAUM += r.adjustedAUM;
+    grouped[key].trailMonthly += r.trailMonthly;
+    grouped[key].folios++;
+    if(r.rateFound) grouped[key].rateFound=true;
+  });
+
+  // Add upfront
+  upfrontResults.forEach(u=>{
+    const key = u.amc+'||'+u.fund;
+    if(grouped[key]) grouped[key].upfrontComm = (grouped[key].upfrontComm||0)+u.upfrontComm;
+    else grouped[key]={amc:u.amc,fund:u.fund,category:'',totalAUM:0,trailRate:null,
+      trailMonthly:0,folios:0,rateFound:u.rateFound,upfrontComm:u.upfrontComm};
+  });
+
+  let rows = Object.values(grouped);
+  if(search) rows=rows.filter(r=>r.amc.toLowerCase().includes(search)||r.fund.toLowerCase().includes(search));
+  if(amcF) rows=rows.filter(r=>r.amc===amcF);
+  rows.sort((a,b)=>(b.trailMonthly+( b.upfrontComm||0))-(a.trailMonthly+(a.upfrontComm||0)));
+
+  if(rows.length===0){
+    document.getElementById('dashTable').innerHTML='<div class="empty-state"><div class="icon">🔍</div><p>No results match your filter.</p></div>';
+    return;
+  }
+
+  document.getElementById('dashTable').innerHTML = `
+    <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>AMC</th><th>Fund</th><th>Category</th><th>Folios</th>
+        <th>Adjusted AUM (₹)</th><th>Trail % (Ann.)</th>
+        <th>Trail This Month (₹)</th><th>Upfront (₹)</th>
+        <th>Total Expected (₹)</th><th>Status</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r=>`<tr>
+          <td class="td-amc">${r.amc}</td>
+          <td style="max-width:240px;font-size:.8rem">${r.fund}</td>
+          <td><span class="pill pill-blue">${r.category||'—'}</span></td>
+          <td class="td-num">${r.folios}</td>
+          <td class="td-num">${fmtN(r.totalAUM)}</td>
+          <td class="td-num">${r.trailRate!=null?r.trailRate.toFixed(2)+'%':'—'}</td>
+          <td class="td-num" style="color:var(--green);font-weight:600">${fmtN(r.trailMonthly)}</td>
+          <td class="td-num" style="color:var(--navy-mid)">${fmtN(r.upfrontComm||0)}</td>
+          <td class="td-num" style="font-weight:700">${fmtN(r.trailMonthly+(r.upfrontComm||0))}</td>
+          <td>${r.rateFound?(r.fuzzy?'<span class="pill pill-yellow">Fuzzy Match</span>':'<span class="pill pill-green">Rate Found</span>'):'<span class="pill pill-red">No Rate</span>'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+// ═══════════════════════════════════════════
+//  DETAIL TABLE
+// ═══════════════════════════════════════════
+function renderDetailTable(){
+  if(!state.results){
+    document.getElementById('detailTable').innerHTML='<div class="empty-state"><div class="icon">🔍</div><p>Process your reports first to see scheme-level detail.</p></div>';
+    return;
+  }
+
+  const {folioResults} = state.results;
+  const search = document.getElementById('detailSearch').value.toLowerCase();
+  const amcF = document.getElementById('detailAmcFilter').value;
+
+  const amcs = [...new Set(folioResults.map(r=>r.amc))].sort();
+  const sel = document.getElementById('detailAmcFilter');
+  const cur = sel.value;
+  sel.innerHTML='<option value="">All AMCs</option>'+amcs.map(a=>`<option value="${a}" ${a===cur?'selected':''}>${a}</option>`).join('');
+
+  let rows = folioResults;
+  if(search) rows=rows.filter(r=>r.amc.toLowerCase().includes(search)||r.fund.toLowerCase().includes(search)||r.folio.toLowerCase().includes(search));
+  if(amcF) rows=rows.filter(r=>r.amc===amcF);
+  rows.sort((a,b)=>b.trailMonthly-a.trailMonthly);
+
+  if(rows.length===0){
+    document.getElementById('detailTable').innerHTML='<div class="empty-state"><div class="icon">🔍</div><p>No records match.</p></div>';
+    return;
+  }
+
+  document.getElementById('detailTable').innerHTML=`
+    <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Folio</th><th>Investor</th><th>AMC</th><th>Fund</th>
+        <th>Original AUM</th><th>Purchases</th><th>Redemptions</th>
+        <th>Adjusted AUM</th><th>Trail % Ann.</th>
+        <th>Trail Monthly (₹)</th><th>Status</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r=>`<tr>
+          <td style="font-family:'DM Mono',monospace;font-size:.78rem">${r.folio}</td>
+          <td style="font-size:.8rem">${r.investor}</td>
+          <td class="td-amc" style="font-size:.78rem">${r.amc}</td>
+          <td style="font-size:.75rem;max-width:200px">${r.fund}</td>
+          <td class="td-num">${fmtN(r.originalAUM)}</td>
+          <td class="td-num" style="color:var(--green)">${r.purchases>0?'+'+fmtN(r.purchases):'—'}</td>
+          <td class="td-num" style="color:var(--red)">${r.redemptions>0?'-'+fmtN(r.redemptions):'—'}</td>
+          <td class="td-num" style="font-weight:600">${fmtN(r.adjustedAUM)}</td>
+          <td class="td-num">${r.trailRate!=null?r.trailRate.toFixed(2)+'%':'—'}</td>
+          <td class="td-num" style="color:var(--green);font-weight:600">${fmtN(r.trailMonthly)}</td>
+          <td>${r.rateFound?'<span class="pill pill-green">✓</span>':'<span class="pill pill-red">No Rate</span>'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+// ═══════════════════════════════════════════
+//  RATE MASTER
+// ═══════════════════════════════════════════
+function renderRateTable(){
+  const search = document.getElementById('rateSearch').value.toLowerCase();
+  const amcF = document.getElementById('rateAmcFilter').value;
+
+  const amcs = [...new Set(state.rates.map(r=>r.amc))].sort();
+  const sel = document.getElementById('rateAmcFilter');
+  const cur = sel.value;
+  sel.innerHTML='<option value="">All AMCs</option>'+amcs.map(a=>`<option value="${a}" ${a===cur?'selected':''}>${a}</option>`).join('');
+
+  let rows = state.rates;
+  if(search) rows=rows.filter(r=>r.amc.toLowerCase().includes(search)||r.fund.toLowerCase().includes(search));
+  if(amcF) rows=rows.filter(r=>r.amc===amcF);
+
+  document.getElementById('rateCount').textContent=`${state.rates.length} rates`;
+
+  if(rows.length===0){
+    document.getElementById('rateTable').innerHTML=`<div class="empty-state"><div class="icon">⚙️</div><p>No rates yet. Click "+ Add Rate" to get started, or import a CSV.</p></div>`;
+    return;
+  }
+
+  document.getElementById('rateTable').innerHTML=`
+    <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>AMC</th><th>Fund (AMC FUND from WealthMagic)</th><th>Category</th><th>Class</th>
+        <th>Upfront %</th><th>Trail % (Annual)</th><th>Trail Monthly Est.</th>
+        <th>Effective From</th><th>Notes</th><th>Actions</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map((r,i)=>{
+          const realIdx = state.rates.indexOf(r);
+          return `<tr>
+            <td class="td-amc">${r.amc}</td>
+            <td style="font-size:.8rem">${r.fund}</td>
+            <td><span class="pill pill-blue">${r.category||'—'}</span></td>
+            <td>${r.fundClass||'—'}</td>
+            <td class="td-num">${r.upfront||'0.000'}%</td>
+            <td class="td-num" style="color:var(--green);font-weight:600">${r.trail||'0.000'}%</td>
+            <td class="td-num" style="color:var(--text-muted)">${(parseFloat(r.trail)||0)/12*100>0?((parseFloat(r.trail)||0)/12).toFixed(4)+'%':'—'}</td>
+            <td style="font-size:.78rem">${r.effectiveFrom||'—'}</td>
+            <td style="font-size:.78rem;color:var(--text-muted)">${r.notes||'—'}</td>
+            <td>
+              <div style="display:flex;gap:.3rem">
+                <button class="btn btn-outline btn-sm" onclick="editRate(${realIdx})">Edit</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteRate(${realIdx})">Del</button>
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+function openAddRate(){
+  state.editIdx=-1;
+  document.getElementById('modalTitle').textContent='Add Commission Rate';
+  ['m_amc','m_fund','m_upfront','m_trail','m_from','m_notes'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('rateModal').classList.add('open');
+}
+
+function editRate(idx){
+  state.editIdx=idx;
+  const r=state.rates[idx];
+  document.getElementById('modalTitle').textContent='Edit Commission Rate';
+  document.getElementById('m_amc').value=r.amc;
+  document.getElementById('m_fund').value=r.fund;
+  document.getElementById('m_cat').value=r.category||'Equity';
+  document.getElementById('m_class').value=r.fundClass||'Regular';
+  document.getElementById('m_upfront').value=r.upfront;
+  document.getElementById('m_trail').value=r.trail;
+  document.getElementById('m_from').value=r.effectiveFrom||'';
+  document.getElementById('m_notes').value=r.notes||'';
+  document.getElementById('rateModal').classList.add('open');
+}
+
+function saveRate(){
+  const amc = document.getElementById('m_amc').value.trim();
+  const fund = document.getElementById('m_fund').value.trim();
+  if(!amc||!fund){toast('AMC and Fund name are required','error');return;}
+
+  const rate = {
+    amc, fund,
+    category: document.getElementById('m_cat').value,
+    fundClass: document.getElementById('m_class').value,
+    upfront: parseFloat(document.getElementById('m_upfront').value)||0,
+    trail: parseFloat(document.getElementById('m_trail').value)||0,
+    effectiveFrom: document.getElementById('m_from').value,
+    notes: document.getElementById('m_notes').value,
+  };
+
+  if(state.editIdx>=0) state.rates[state.editIdx]=rate;
+  else state.rates.push(rate);
+
+  localStorage.setItem('ciq_rates',JSON.stringify(state.rates));
+  closeModal();
+  renderRateTable();
+  toast(state.editIdx>=0?'Rate updated':'Rate added','success');
+}
+
+function deleteRate(idx){
+  if(!confirm('Delete this rate?')) return;
+  state.rates.splice(idx,1);
+  localStorage.setItem('ciq_rates',JSON.stringify(state.rates));
+  renderRateTable();
+  toast('Rate deleted');
+}
+
+function closeModal(){
+  document.getElementById('rateModal').classList.remove('open');
+}
+
+// ═══════════════════════════════════════════
+//  IMPORT / EXPORT
+// ═══════════════════════════════════════════
+function importRates(){document.getElementById('rateImportFile').click()}
+
+function handleRateImport(e){
+  const file=e.target.files[0];
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=(ev)=>{
+    const wb=XLSX.read(ev.target.result,{type:'binary'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+    let added=0;
+    rows.forEach(r=>{
+      const amc=String(r['AMC']||r['amc']||'').trim();
+      const fund=String(r['AMC FUND']||r['Fund']||r['fund']||'').trim();
+      if(amc&&fund){
+        state.rates.push({
+          amc,fund,
+          category:String(r['Category']||r['Fund Category']||''),
+          fundClass:String(r['Class']||r['Fund Class']||''),
+          upfront:parseFloat(r['Upfront %']||r['Upfront']||0),
+          trail:parseFloat(r['Trail %']||r['Trail']||0),
+          effectiveFrom:String(r['Effective From']||''),
+          notes:String(r['Notes']||''),
+        });
+        added++;
+      }
+    });
+    localStorage.setItem('ciq_rates',JSON.stringify(state.rates));
+    renderRateTable();
+    toast(`${added} rates imported`,'success');
+  };
+  reader.readAsBinaryString(file);
+}
+
+function exportRates(){
+  const rows=state.rates.map(r=>({
+    'AMC':r.amc,'AMC FUND':r.fund,'Category':r.category,'Class':r.fundClass,
+    'Upfront %':r.upfront,'Trail %':r.trail,'Effective From':r.effectiveFrom,'Notes':r.notes
+  }));
+  downloadCSV(rows,'CommissionIQ_Rates.csv');
+}
+
+function exportDashboard(){
+  if(!state.results){toast('No data to export','error');return;}
+  const rows=state.results.folioResults.map(r=>({
+    'Folio':r.folio,'Investor':r.investor,'Group Code':r.grpCode,
+    'AMC':r.amc,'Fund':r.fund,'Category':r.category,
+    'Original AUM':r.originalAUM,'Purchases':r.purchases,'Redemptions':r.redemptions,
+    'Adjusted AUM':r.adjustedAUM,'Trail % Annual':r.trailRate,
+    'Trail Monthly':r.trailMonthly.toFixed(2),'Rate Found':r.rateFound
+  }));
+  downloadCSV(rows,'CommissionIQ_Expected_'+( state.results.reportMonth||'all')+'.csv');
+}
+
+function exportDetail(){
+  exportDashboard();
+}
+
+function downloadCSV(rows,filename){
+  if(!rows.length){toast('Nothing to export','error');return;}
+  const headers=Object.keys(rows[0]);
+  const csv=[headers.join(','),...rows.map(r=>headers.map(h=>{
+    const v=r[h]??'';
+    return typeof v==='string'&&v.includes(',')?`"${v}"`:v;
+  }).join(','))].join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download=filename;a.click();
+  toast('Downloaded '+filename,'success');
+}
+
+function downloadTemplates(){
+  toast('Templates are included in the repository — see /templates folder','success');
+}
+
+function clearData(){
+  if(!confirm('Clear all uploaded data? (Rates are preserved)')) return;
+  state.aumData=null;state.transData=null;state.results=null;
+  document.getElementById('aumZone').classList.remove('done');
+  document.getElementById('transZone').classList.remove('done');
+  document.getElementById('aumStatus').innerHTML='';
+  document.getElementById('transStatus').innerHTML='';
+  toast('Data cleared');
+}
+
+// ═══════════════════════════════════════════
+//  FORMATTERS
+// ═══════════════════════════════════════════
+function fmt(n){
+  if(!n||isNaN(n)) return '₹0';
+  if(n>=10000000) return '₹'+(n/10000000).toFixed(2)+' Cr';
+  if(n>=100000) return '₹'+(n/100000).toFixed(2)+' L';
+  return '₹'+n.toLocaleString('en-IN',{maximumFractionDigits:0});
+}
+function fmtN(n){
+  if(!n||isNaN(n)) return '—';
+  if(n>=10000000) return '₹'+(n/10000000).toFixed(2)+' Cr';
+  if(n>=100000) return '₹'+(n/100000).toFixed(2)+' L';
+  return '₹'+n.toLocaleString('en-IN',{maximumFractionDigits:0});
+}
+function fmtCr(n){
+  if(!n||isNaN(n)) return '₹0';
+  if(n>=10000000) return '₹'+(n/10000000).toFixed(1)+' Cr';
+  if(n>=100000) return '₹'+(n/100000).toFixed(1)+' L';
+  return '₹'+n.toLocaleString('en-IN',{maximumFractionDigits:0});
+}
+
+// ═══════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════
+function toast(msg,type=''){
+  const el=document.createElement('div');
+  el.className='toast '+(type||'');
+  el.textContent=msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(()=>el.remove(),3000);
+}
+
+// ═══════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════
+// Set default month to current month
+const now=new Date();
+document.getElementById('reportMonth').value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+document.getElementById('aumDate').value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+
+// Close modal on overlay click
+document.getElementById('rateModal').addEventListener('click',function(e){
+  if(e.target===this) closeModal();
+});
+
+renderRateTable();
+renderDashboard();
+</script>
+</body>
+</html>
