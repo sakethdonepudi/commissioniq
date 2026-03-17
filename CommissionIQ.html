@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CommissionIQ — MF Trail Commission Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --navy:#0f1f38;--navy-mid:#1b3a5c;--navy-light:#2e5f8a;
+  --gold:#c9a84c;--gold-light:#e8c97a;
+  --cream:#faf8f3;--cream-dark:#f0ece0;
+  --text:#1a1a2e;--text-muted:#5a6374;
+  --green:#1a7a4a;--green-bg:#e8f5ee;
+  --red:#b53030;--red-bg:#fdeaea;
+  --amber:#b07800;--amber-bg:#fff8e1;
+  --border:#d8d3c8;
+  --shadow:0 4px 24px rgba(15,31,56,.10);
+  --shadow-lg:0 12px 48px rgba(15,31,56,.16);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--text);min-height:100vh}
+
+/* NAV */
+nav{background:var(--navy);padding:0 2.5rem;display:flex;align-items:center;justify-content:space-between;height:62px;position:sticky;top:0;z-index:100;border-bottom:2px solid var(--gold)}
+.logo{font-family:'DM Serif Display',serif;color:var(--gold-light);font-size:1.45rem;letter-spacing:.02em}
+.logo span{color:#fff;opacity:.55;font-size:.78rem;font-family:'Inter',sans-serif;font-weight:300;margin-left:.6rem}
+.nav-tabs{display:flex;gap:.2rem}
+.tab-btn{background:none;border:none;color:rgba(255,255,255,.5);font-family:'Inter',sans-serif;font-size:.8rem;font-weight:500;padding:.5rem 1rem;border-radius:6px;cursor:pointer;transition:.2s}
+.tab-btn:hover{color:#fff;background:rgba(255,255,255,.07)}
+.tab-btn.active{color:var(--gold-light);background:rgba(201,168,76,.12)}
+
+/* LAYOUT */
+.page{display:none;padding:2rem 2.5rem;max-width:1380px;margin:0 auto;animation:fadeUp .3s ease}
+.page.active{display:block}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+/* CARDS */
+.card{background:#fff;border-radius:14px;border:1px solid var(--border);box-shadow:var(--shadow);padding:1.6rem 1.8rem;margin-bottom:1.4rem}
+.card-title{font-family:'DM Serif Display',serif;font-size:1.15rem;color:var(--navy-mid);margin-bottom:1.1rem;display:flex;align-items:center;gap:.55rem}
+.card-title .icon{width:30px;height:30px;border-radius:7px;background:var(--navy-mid);color:var(--gold-light);display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0}
+
+/* GRID */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1.4rem}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem}
+
+/* UPLOAD */
+.upload-zone{border:2px dashed var(--border);border-radius:12px;padding:2rem;text-align:center;cursor:pointer;transition:.2s;background:var(--cream)}
+.upload-zone:hover,.upload-zone.dragover{border-color:var(--navy-light);background:#eef4fb}
+.upload-zone.done{border-color:var(--green);background:var(--green-bg)}
+.upload-zone.prev-done{border-color:var(--amber);background:var(--amber-bg)}
+.upload-zone input[type=file]{display:none}
+.upload-icon{font-size:2rem;margin-bottom:.5rem}
+.upload-label{font-size:.9rem;color:var(--text-muted);margin-bottom:.3rem}
+.upload-label strong{color:var(--navy-mid)}
+.upload-hint{font-size:.73rem;color:var(--text-muted)}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:.4rem;padding:.58rem 1.3rem;border-radius:8px;font-size:.83rem;font-weight:600;cursor:pointer;border:none;transition:.2s;white-space:nowrap}
+.btn-primary{background:var(--navy-mid);color:#fff}.btn-primary:hover{background:var(--navy)}
+.btn-gold{background:var(--gold);color:var(--navy)}.btn-gold:hover{background:var(--gold-light)}
+.btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--text)}.btn-outline:hover{border-color:var(--navy-light);color:var(--navy-mid)}
+.btn-sm{padding:.38rem .9rem;font-size:.76rem}
+.btn-danger{background:var(--red);color:#fff}
+
+/* FORM */
+.form-group{display:flex;flex-direction:column;gap:.28rem}
+.form-label{font-size:.73rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em}
+.form-input,.form-select{border:1.5px solid var(--border);border-radius:8px;padding:.52rem .8rem;font-size:.86rem;font-family:'Inter',sans-serif;color:var(--text);background:#fff;transition:.15s}
+.form-input:focus,.form-select:focus{outline:none;border-color:var(--navy-light)}
+.form-input::placeholder{color:#bbb}
+
+/* TABLE */
+.table-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:.81rem}
+thead th{background:var(--navy);color:#fff;padding:.7rem .9rem;text-align:left;font-weight:600;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;position:sticky;top:0}
+tbody tr{border-bottom:1px solid #f0ece0;transition:.15s}
+tbody tr:hover{background:#f7f4ed}
+tbody td{padding:.6rem .9rem;color:var(--text)}
+tbody tr:last-child{border-bottom:none}
+.td-num{text-align:right;font-family:'DM Mono',monospace;font-size:.79rem}
+.td-amc{font-weight:600;color:var(--navy-mid)}
+
+/* PILLS */
+.pill{display:inline-block;padding:.18rem .6rem;border-radius:20px;font-size:.7rem;font-weight:600}
+.pill-green{background:var(--green-bg);color:var(--green)}
+.pill-red{background:var(--red-bg);color:var(--red)}
+.pill-yellow{background:var(--amber-bg);color:var(--amber)}
+.pill-blue{background:#e8f0fe;color:#1a56a8}
+
+/* RIBBON */
+.ribbon{background:var(--navy);color:#fff;border-radius:12px;padding:1.2rem 2rem;display:flex;gap:2.5rem;align-items:center;margin-bottom:1.4rem;box-shadow:var(--shadow-lg);flex-wrap:wrap}
+.ribbon-item{text-align:center;min-width:110px}
+.ribbon-val{font-family:'DM Serif Display',serif;font-size:1.6rem;color:var(--gold-light)}
+.ribbon-lbl{font-size:.67rem;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.08em;margin-top:.12rem}
+.ribbon-divider{width:1px;background:rgba(255,255,255,.13);align-self:stretch}
+
+/* SECTION */
+.section-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1.3rem;gap:1rem;flex-wrap:wrap}
+.section-title{font-family:'DM Serif Display',serif;font-size:1.5rem;color:var(--navy)}
+.section-sub{font-size:.83rem;color:var(--text-muted);margin-top:.2rem}
+
+/* FILTER BAR */
+.filter-bar{display:flex;gap:.65rem;align-items:center;flex-wrap:wrap;margin-bottom:1.1rem}
+.filter-bar .form-input{flex:1;min-width:180px}
+
+/* INFO BOX */
+.info-box{background:#eef4fb;border:1px solid #c5d8ee;border-radius:9px;padding:.9rem 1.1rem;font-size:.82rem;color:var(--navy-mid);margin-bottom:1rem;line-height:1.6}
+
+/* DELTA */
+.delta-up{color:var(--green);font-weight:700;font-family:'DM Mono',monospace;font-size:.76rem}
+.delta-dn{color:var(--red);font-weight:700;font-family:'DM Mono',monospace;font-size:.76rem}
+.td-curr{background:#f0f8f4;font-weight:600}
+
+/* TOAST */
+.toast-container{position:fixed;bottom:1.5rem;right:1.5rem;z-index:999;display:flex;flex-direction:column;gap:.5rem}
+.toast{background:var(--navy);color:#fff;padding:.7rem 1.1rem;border-radius:10px;font-size:.83rem;box-shadow:var(--shadow-lg);animation:slideIn .25s ease}
+.toast.success{background:var(--green)}.toast.error{background:var(--red)}
+@keyframes slideIn{from{transform:translateX(50px);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* EMPTY */
+.empty-state{text-align:center;padding:3rem;color:var(--text-muted)}
+.empty-state .icon{font-size:2.5rem;margin-bottom:.8rem}
+.empty-state p{font-size:.88rem}
+
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(10,20,40,.6);z-index:200;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:#fff;border-radius:16px;padding:1.8rem;min-width:480px;max-width:600px;width:90%;box-shadow:var(--shadow-lg);animation:fadeUp .25s ease}
+.modal-title{font-family:'DM Serif Display',serif;font-size:1.2rem;color:var(--navy);margin-bottom:1.1rem}
+.modal-footer{display:flex;gap:.7rem;justify-content:flex-end;margin-top:1.4rem}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">CommissionIQ <span>Trail Commission Calculator · WealthMagic</span></div>
+  <div class="nav-tabs">
+    <button class="tab-btn active" onclick="showPage('dashboard')">📊 Dashboard</button>
+    <button class="tab-btn" onclick="showPage('history')">📅 History</button>
+    <button class="tab-btn" onclick="showPage('upload')">📤 Upload</button>
+    <button class="tab-btn" onclick="showPage('rates')">⚙️ Rate Master</button>
+    <button class="tab-btn" onclick="showPage('detail')">🔍 Folio Detail</button>
+  </div>
+</nav>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ═══════════════ DASHBOARD ═══════════════ -->
+<div class="page active" id="page-dashboard">
+  <div class="section-header">
+    <div>
+      <div class="section-title">Commission Dashboard</div>
+      <div class="section-sub" id="dashSubtitle">Upload your AUM report to calculate expected trail commissions</div>
+    </div>
+    <div style="display:flex;gap:.65rem;align-items:center;flex-wrap:wrap">
+      <select class="form-select" id="monthFilter" onchange="renderDashboard()" style="font-size:.8rem;width:160px">
+        <option value="">All Months</option>
+      </select>
+      <button class="btn btn-outline btn-sm" onclick="exportCommission()">⬇ Export Commission CSV</button>
+    </div>
+  </div>
+  <div id="ribbonArea"></div>
+  <div id="dashTable">
+    <div class="empty-state"><div class="icon">📭</div><p>Upload your AUM report and set commission rates to get started.</p></div>
+  </div>
+</div>
+
+<!-- ═══════════════ HISTORY ═══════════════ -->
+<div class="page" id="page-history">
+  <div class="section-header">
+    <div><div class="section-title">Monthly History</div><div class="section-sub">Month-on-month trail commission trends</div></div>
+    <button class="btn btn-outline btn-sm" onclick="exportFullHistory()">⬇ Export Full History CSV</button>
+  </div>
+  <div id="historyContent">
+    <div class="empty-state"><div class="icon">📅</div><p>No history yet. Calculate this month, export the CSV, then upload it next month to build history.</p></div>
+  </div>
+</div>
+
+<!-- ═══════════════ UPLOAD ═══════════════ -->
+<div class="page" id="page-upload">
+  <div class="section-header">
+    <div><div class="section-title">Upload Reports</div><div class="section-sub">Only the AUM report is needed. Export directly from WealthMagic.</div></div>
+  </div>
+
+  <div class="grid-2">
+    <!-- AUM UPLOAD -->
+    <div class="card">
+      <div class="card-title"><div class="icon">📊</div>AUM Report <span style="font-size:.75rem;color:var(--green);font-weight:600;margin-left:.3rem">← Only file needed</span></div>
+      <div class="upload-zone" id="aumZone" onclick="document.getElementById('aumFile').click()"
+           ondragover="dragOver(event,'aumZone')" ondragleave="dragLeave('aumZone')" ondrop="dropFile(event,'aum')">
+        <input type="file" id="aumFile" accept=".xlsx,.csv" onchange="handleFile(event,'aum')"/>
+        <div class="upload-icon">📊</div>
+        <div class="upload-label"><strong>Click or drag</strong> AUM Report here</div>
+        <div class="upload-hint">WealthMagic → "Folio No. Wise AUM List" → Export Excel<br/>Columns needed: AMC · Fund · Folio No. · AUM</div>
+      </div>
+      <div id="aumStatus" style="margin-top:.8rem"></div>
+    </div>
+
+    <!-- PREV CSV UPLOAD -->
+    <div class="card" style="border:1.5px dashed var(--amber);background:var(--amber-bg)">
+      <div class="card-title"><div class="icon" style="background:var(--amber)">📅</div>Previous Month CSV <span style="font-size:.75rem;color:var(--amber);font-weight:600;margin-left:.3rem">(optional — for history)</span></div>
+      <div class="upload-zone" id="prevZone" onclick="document.getElementById('prevFile').click()"
+           ondragover="dragOver(event,'prevZone')" ondragleave="dragLeave('prevZone')" ondrop="dropFile(event,'prev')"
+           style="background:#fff;padding:1.5rem">
+        <input type="file" id="prevFile" accept=".csv" onchange="handleFile(event,'prev')"/>
+        <div class="upload-icon">📂</div>
+        <div class="upload-label"><strong>Click or drag</strong> last month's CommissionIQ export</div>
+        <div class="upload-hint">The CSV you exported from this app last month.<br/>App stacks months → shows trends in History tab.</div>
+      </div>
+      <div id="prevStatus" style="margin-top:.8rem"></div>
+      <div style="margin-top:.8rem;font-size:.78rem;color:var(--amber);line-height:1.7">
+        <strong>How stacking works:</strong><br/>
+        Calculate Mar → Export → Save as <code style="background:#f0e8d0;padding:1px 4px;border-radius:3px">CommissionIQ_Mar_2025.csv</code><br/>
+        Next month upload that CSV here alongside fresh AUM → History tab shows both months
+      </div>
+    </div>
+  </div>
+
+  <!-- OPTIONS -->
+  <div class="card">
+    <div class="card-title"><div class="icon">⚙️</div>Processing Options</div>
+    <div class="grid-2" style="max-width:500px">
+      <div class="form-group">
+        <label class="form-label">Report Month</label>
+        <input type="month" class="form-input" id="reportMonth"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">ARN / Sub-broker filter (optional)</label>
+        <input type="text" class="form-input" id="arnFilter" placeholder="e.g. ARN-169854"/>
+      </div>
+    </div>
+    <div style="margin-top:1.2rem;display:flex;gap:.75rem;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="processReports()">⚡ Calculate Trail Commissions</button>
+      <button class="btn btn-outline" onclick="clearData()">🗑 Clear Data</button>
+    </div>
+  </div>
+
+  <!-- FORMULA EXPLAINER -->
+  <div class="card">
+    <div class="card-title"><div class="icon">🧮</div>How Commission is Calculated</div>
+    <div style="display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap">
+      <div style="background:var(--navy);color:#fff;border-radius:10px;padding:1rem 1.5rem;font-family:'DM Mono',monospace;font-size:.92rem;letter-spacing:.02em">
+        Trail (Month) = AUM × Annual Rate % ÷ 12
+      </div>
+      <div style="font-size:.82rem;color:var(--text-muted);line-height:1.8">
+        <div>✅ AUM used directly from WealthMagic report (already current)</div>
+        <div>✅ No transaction adjustment needed — WealthMagic updates within 1–2 days</div>
+        <div>✅ Rate Master maps each AMC + Fund → your agreed annual trail %</div>
+        <div>✅ Results grouped by AMC for easy reconciliation</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ RATE MASTER ═══════════════ -->
+<div class="page" id="page-rates">
+  <div class="section-header">
+    <div><div class="section-title">Rate Master</div><div class="section-sub">Map each AMC + Fund to your agreed annual trail %. Set up once, update only when rates change.</div></div>
+    <div style="display:flex;gap:.65rem;flex-wrap:wrap">
+      <button class="btn btn-outline btn-sm" onclick="importRates()">⬆ Import CSV</button>
+      <input type="file" id="rateImportFile" accept=".csv,.xlsx" style="display:none" onchange="handleRateImport(event)"/>
+      <button class="btn btn-outline btn-sm" onclick="exportRates()">⬇ Export CSV</button>
+      <button class="btn btn-primary btn-sm" onclick="openAddRate()">+ Add Rate</button>
+    </div>
+  </div>
+  <div class="info-box">
+    💡 <strong>Tip:</strong> Import the pre-filled <code>RateMaster_Prefilled.xlsx</code> file — it already has all 117 AMC + Fund combinations from your AUM report. Just fill in the Trail % column and import.
+  </div>
+  <div class="card" style="padding:1.2rem 1.5rem">
+    <div class="filter-bar">
+      <input class="form-input" placeholder="Search AMC or Fund…" id="rateSearch" oninput="renderRateTable()"/>
+      <select class="form-select" id="rateAmcFilter" onchange="renderRateTable()" style="width:210px"><option value="">All AMCs</option></select>
+      <span id="rateCount" style="font-family:'DM Mono',monospace;font-size:.76rem;background:var(--cream-dark);border:1px solid var(--border);padding:.28rem .65rem;border-radius:6px;color:var(--navy-mid)">0 rates</span>
+    </div>
+    <div id="rateTable"></div>
+  </div>
+</div>
+
+<!-- ═══════════════ FOLIO DETAIL ═══════════════ -->
+<div class="page" id="page-detail">
+  <div class="section-header">
+    <div><div class="section-title">Folio Detail</div><div class="section-sub">Investor-level breakdown of AUM and expected trail commission.</div></div>
+    <button class="btn btn-outline btn-sm" onclick="exportDetail()">⬇ Export CSV</button>
+  </div>
+  <div class="card">
+    <div class="filter-bar">
+      <input class="form-input" placeholder="Search investor, AMC, Fund or Folio…" id="detailSearch" oninput="renderDetailTable()"/>
+      <select class="form-select" id="detailAmcFilter" onchange="renderDetailTable()" style="width:210px"><option value="">All AMCs</option></select>
+      <select class="form-select" id="detailMonthFilter" onchange="renderDetailTable()" style="width:150px"><option value="">All Months</option></select>
+    </div>
+    <div id="detailTable"><div class="empty-state"><div class="icon">🔍</div><p>Process your AUM report first.</p></div></div>
+  </div>
+</div>
+
+<!-- ═══════════════ RATE MODAL ═══════════════ -->
+<div class="modal-overlay" id="rateModal">
+  <div class="modal">
+    <div class="modal-title" id="modalTitle">Add Commission Rate</div>
+    <div class="grid-2" style="gap:.85rem">
+      <div class="form-group" style="grid-column:1/-1">
+        <label class="form-label">AMC Name — must match WealthMagic exactly</label>
+        <input class="form-input" id="m_amc" placeholder="e.g. PPFAS"/>
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label class="form-label">Fund Name — must match WealthMagic "Fund" column exactly</label>
+        <input class="form-input" id="m_fund" placeholder="e.g. Flexi Cap Reg-G"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fund Category</label>
+        <select class="form-select" id="m_cat">
+          <option>Equity</option><option>Debt</option><option>Hybrid</option>
+          <option>ELSS</option><option>Index</option><option>Liquid</option><option>FoF</option><option>Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Trail % Annual</label>
+        <input class="form-input" id="m_trail" type="number" step="0.001" min="0" placeholder="1.00"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Effective From</label>
+        <input class="form-input" id="m_from" type="date"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <input class="form-input" id="m_notes" placeholder="Optional"/>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRate()">Save Rate</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════
+const PAGES=['dashboard','history','upload','rates','detail'];
+let S={
+  rates: JSON.parse(localStorage.getItem('ciq_rates')||'[]'),
+  aumData: null,
+  prevHistory: [],
+  results: null,
+  allHistory: [],
+  editIdx: -1,
+};
+const n=s=>String(s||'').trim();
+
+// ════════════════════════════════════════
+// NAV
+// ════════════════════════════════════════
+function showPage(p){
+  document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));
+  document.getElementById('page-'+p).classList.add('active');
+  document.querySelectorAll('.tab-btn')[PAGES.indexOf(p)].classList.add('active');
+  if(p==='dashboard') renderDashboard();
+  if(p==='history')   renderHistory();
+  if(p==='rates')     renderRateTable();
+  if(p==='detail')    renderDetailTable();
+}
+
+// ════════════════════════════════════════
+// FILE HANDLING
+// ════════════════════════════════════════
+function dragOver(e,id){e.preventDefault();document.getElementById(id).classList.add('dragover')}
+function dragLeave(id){document.getElementById(id).classList.remove('dragover')}
+function dropFile(e,type){e.preventDefault();dragLeave(type==='aum'?'aumZone':'prevZone');parseFile(e.dataTransfer.files[0],type)}
+function handleFile(e,type){parseFile(e.target.files[0],type)}
+
+function parseFile(file,type){
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const wb=XLSX.read(ev.target.result,{type:'binary',cellDates:true});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      // Smart header detection — handles WealthMagic files where row 1 has unnamed cols
+      const raw=XLSX.utils.sheet_to_json(ws,{defval:'',header:1});
+      let hdrIdx=0;
+      const knownHdrs=['folio no.','amc','group code','investor','report_month','trail_monthly'];
+      for(let i=0;i<Math.min(6,raw.length);i++){
+        const joined=raw[i].map(c=>String(c||'').toLowerCase()).join('|');
+        if(knownHdrs.some(h=>joined.includes(h))){hdrIdx=i;break}
+      }
+      const hdrs=raw[hdrIdx].map(c=>String(c||'').trim());
+      const data=raw.slice(hdrIdx+1)
+        .map(row=>{const o={};hdrs.forEach((h,i)=>{if(h)o[h]=row[i]??''});return o})
+        .filter(r=>n(r['AMC']||r['amc']||'')!=='' && !String(r['AMC']||r['amc']||'').toLowerCase().includes('transaction') && !String(r['AMC']||r['amc']||'').toLowerCase().includes('data source'));
+
+      if(type==='aum'){
+        S.aumData=data;
+        setStatus('aumStatus','✅ '+data.length+' folios loaded — '+file.name,'green');
+        document.getElementById('aumZone').classList.add('done');
+        toast('AUM report loaded ('+data.length+' folios)','success');
+      } else if(type==='prev'){
+        S.prevHistory=data.map(r=>({
+          report_month:n(r['report_month']||r['Report Month']||''),
+          folio:n(r['folio']||r['Folio No.']),
+          investor:n(r['investor']||r['Investor']),
+          group_code:n(r['group_code']||r['Group Code']),
+          amc:n(r['amc']||r['AMC']),
+          fund:n(r['fund']||r['Fund']||r['AMC Fund']),
+          category:n(r['category']||r['Fund Category']),
+          fund_class:n(r['fund_class']||r['Fund Class']),
+          aum:parseFloat(r['aum']||r['AUM'])||0,
+          trail_rate:parseFloat(r['trail_rate']||r['Trail Rate Annual'])||0,
+          trail_monthly:parseFloat(r['trail_monthly']||r['Trail Monthly'])||0,
+          rate_found:true,
+        })).filter(r=>r.report_month && r.amc);
+        const months=[...new Set(S.prevHistory.map(r=>r.report_month))];
+        setStatus('prevStatus','✅ '+S.prevHistory.length+' rows · '+months.length+' month(s): '+months.map(fmtMonth).join(', '),'amber');
+        document.getElementById('prevZone').classList.add('prev-done');
+        toast('History loaded — '+months.length+' previous month(s)','success');
+      }
+    }catch(err){toast('Error reading file: '+err.message,'error')}
+  };
+  reader.readAsBinaryString(file);
+}
+
+function setStatus(id,msg,type){
+  const c={green:'var(--green)',amber:'var(--amber)',red:'var(--red)'};
+  const b={green:'var(--green-bg)',amber:'var(--amber-bg)',red:'var(--red-bg)'};
+  document.getElementById(id).innerHTML='<div style="font-size:.79rem;color:'+c[type]+';padding:.4rem .7rem;background:'+b[type]+';border-radius:7px">'+msg+'</div>';
+}
+
+// ════════════════════════════════════════
+// CORE CALCULATION — AUM × Rate ÷ 12
+// ════════════════════════════════════════
+function processReports(){
+  if(!S.aumData){toast('Please upload the AUM report first','error');return}
+  if(!S.rates.length){toast('Please add commission rates in Rate Master first','error');return}
+  const reportMonth=document.getElementById('reportMonth').value;
+  if(!reportMonth){toast('Please select a report month','error');return}
+  const arnFilter=n(document.getElementById('arnFilter').value).toLowerCase();
+
+  function findRate(amc,fund){
+    const a=amc.toLowerCase(), f=fund.toLowerCase();
+    let m=S.rates.find(r=>n(r.amc).toLowerCase()===a && n(r.fund).toLowerCase()===f);
+    if(m) return{trail:+m.trail||0,fuzzy:false};
+    // Fuzzy: AMC match only
+    m=S.rates.find(r=>n(r.amc).toLowerCase()===a);
+    if(m) return{trail:+m.trail||0,fuzzy:true};
+    return null;
+  }
+
+  const folioResults=[];
+  S.aumData.forEach(r=>{
+    const folio=n(r['Folio No.']);
+    const amc=n(r['AMC']);
+    const fund=n(r['Fund']||r['AMC FUND']||r['AMC Fund']);
+    const aum=parseFloat(r['AUM']);
+    const investor=n(r['Investor']);
+    const grpCode=n(r['Group Code']);
+    const category=n(r['Fund Category']);
+    const fundClass=n(r['Fund Class']);
+    const arn=n(r['ARN']);
+
+    // Skip invalid / footer rows
+    if(!folio || isNaN(aum) || !amc || amc.toLowerCase().includes('total')) return;
+    // ARN filter if specified
+    if(arnFilter && !arn.toLowerCase().includes(arnFilter)) return;
+
+    const rate=findRate(amc,fund);
+    const trail=rate ? (aum * rate.trail / 100 / 12) : 0;
+
+    folioResults.push({
+      report_month: reportMonth,
+      folio, investor, group_code: grpCode,
+      amc, fund, category, fund_class: fundClass, arn,
+      aum, trail_rate: rate ? rate.trail : null,
+      trail_monthly: trail,
+      rate_found: !!rate, fuzzy: rate?.fuzzy||false,
+    });
+  });
+
+  S.results={folioResults, reportMonth};
+
+  // Merge with previous history (replace if same month recalculated)
+  const filtered=S.prevHistory.filter(r=>r.report_month!==reportMonth);
+  S.allHistory=[...filtered, ...folioResults];
+
+  // Populate month filter dropdowns
+  const allMonths=[...new Set(S.allHistory.map(r=>r.report_month).filter(Boolean))].sort();
+  ['monthFilter','detailMonthFilter'].forEach(id=>{
+    const sel=document.getElementById(id);
+    const cur=sel.value||reportMonth;
+    sel.innerHTML='<option value="">All Months</option>'+allMonths.map(m=>'<option value="'+m+'" '+(m===cur?'selected':'')+'>'+fmtMonth(m)+'</option>').join('');
+  });
+
+  const total=folioResults.reduce((s,r)=>s+r.trail_monthly,0);
+  const noRate=folioResults.filter(r=>!r.rate_found).length;
+  toast('✅ Done — '+folioResults.length+' folios · Expected trail: '+fmt(total)+(noRate?' · ⚠ '+noRate+' missing rates':''),'success');
+  showPage('dashboard');
+}
+
+// ════════════════════════════════════════
+// DASHBOARD
+// ════════════════════════════════════════
+function renderDashboard(){
+  if(!S.results && !S.allHistory.length){
+    document.getElementById('ribbonArea').innerHTML='';
+    document.getElementById('dashTable').innerHTML='<div class="empty-state"><div class="icon">📭</div><p>Upload your AUM report and click Calculate to get started.</p></div>';
+    return;
+  }
+  const mf=document.getElementById('monthFilter').value;
+  const search=(document.getElementById('dashSearch')||{value:''}).value.toLowerCase();
+  const amcF=(document.getElementById('dashAmcFilter')||{value:''}).value;
+
+  const src=S.allHistory.length ? S.allHistory : (S.results.folioResults||[]);
+  const data=src.filter(r=>!mf||r.report_month===mf);
+
+  const totalTrail=data.reduce((s,r)=>s+(r.trail_monthly||0),0);
+  const totalAUM=data.reduce((s,r)=>s+(r.aum||0),0);
+  const noRate=data.filter(r=>!r.rate_found).length;
+  const months=[...new Set(S.allHistory.map(r=>r.report_month).filter(Boolean))].sort();
+  const folioCount=data.length;
+  const amcCount=[...new Set(data.map(r=>r.amc))].length;
+
+  document.getElementById('dashSubtitle').textContent=
+    mf ? 'Showing '+fmtMonth(mf)+' — '+folioCount+' folios across '+amcCount+' AMCs'
+       : 'All months — '+months.length+' month(s) of history';
+
+  // MoM change
+  let momHtml='';
+  if(months.length>=2 && mf){
+    const idx=months.indexOf(mf);
+    if(idx>0){
+      const prevTrail=S.allHistory.filter(r=>r.report_month===months[idx-1]).reduce((s,r)=>s+(r.trail_monthly||0),0);
+      const diff=totalTrail-prevTrail;
+      const pct=prevTrail>0?((diff/prevTrail)*100).toFixed(1):null;
+      momHtml='<div class="ribbon-divider"></div><div class="ribbon-item"><div class="ribbon-val" style="color:'+(diff>=0?'#6fcf97':'#eb5757')+'">'+(diff>=0?'+':'')+fmt(diff)+'</div><div class="ribbon-lbl">vs '+fmtMonth(months[idx-1])+'</div></div>'
+        +(pct?'<div class="ribbon-divider"></div><div class="ribbon-item"><div class="ribbon-val" style="color:'+(+pct>=0?'#6fcf97':'#eb5757')+'">'+(+pct>=0?'+':'')+pct+'%</div><div class="ribbon-lbl">MoM Change</div></div>':'');
+    }
+  }
+
+  document.getElementById('ribbonArea').innerHTML=`
+    <div class="ribbon">
+      <div class="ribbon-item"><div class="ribbon-val">${fmt(totalTrail)}</div><div class="ribbon-lbl">Expected Trail${mf?' This Month':' (All)'}</div></div>
+      <div class="ribbon-divider"></div>
+      <div class="ribbon-item"><div class="ribbon-val">${fmtCr(totalAUM)}</div><div class="ribbon-lbl">Total AUM</div></div>
+      <div class="ribbon-divider"></div>
+      <div class="ribbon-item"><div class="ribbon-val">${folioCount}</div><div class="ribbon-lbl">Folios</div></div>
+      <div class="ribbon-divider"></div>
+      <div class="ribbon-item"><div class="ribbon-val">${amcCount}</div><div class="ribbon-lbl">AMCs</div></div>
+      ${momHtml}
+      ${noRate?'<div class="ribbon-divider"></div><div class="ribbon-item"><div class="ribbon-val" style="color:#eb5757">'+noRate+'</div><div class="ribbon-lbl">Missing Rates</div></div>':''}
+    </div>`;
+
+  // Group by AMC + Fund
+  const grouped={};
+  data.forEach(r=>{
+    const k=r.amc+'||'+r.fund;
+    if(!grouped[k]) grouped[k]={amc:r.amc,fund:r.fund,category:r.category,totalAUM:0,trailRate:r.trail_rate,trailMonthly:0,folios:0,rateFound:r.rate_found,fuzzy:r.fuzzy};
+    grouped[k].totalAUM+=r.aum||0;
+    grouped[k].trailMonthly+=r.trail_monthly||0;
+    grouped[k].folios++;
+    if(r.rate_found) grouped[k].rateFound=true;
+  });
+
+  let rows=Object.values(grouped);
+  if(search) rows=rows.filter(r=>r.amc.toLowerCase().includes(search)||r.fund.toLowerCase().includes(search));
+  if(amcF) rows=rows.filter(r=>r.amc===amcF);
+  rows.sort((a,b)=>b.trailMonthly-a.trailMonthly);
+
+  const amcs=[...new Set(Object.values(grouped).map(r=>r.amc))].sort();
+
+  if(!rows.length){
+    document.getElementById('dashTable').innerHTML='<div class="empty-state"><div class="icon">🔍</div><p>No results match your filter.</p></div>';
+    return;
+  }
+
+  document.getElementById('dashTable').innerHTML=`
+    <div class="filter-bar">
+      <input class="form-input" placeholder="Search AMC or Fund…" id="dashSearch" oninput="renderDashboard()" value="${search}"/>
+      <select class="form-select" id="dashAmcFilter" onchange="renderDashboard()" style="width:220px">
+        <option value="">All AMCs</option>${amcs.map(a=>'<option value="'+a+'" '+(a===amcF?'selected':'')+'>'+a+'</option>').join('')}
+      </select>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th>AMC</th><th>Fund</th><th>Category</th><th>Folios</th>
+        <th>Total AUM (₹)</th><th>Trail % Annual</th>
+        <th>Expected Trail This Month (₹)</th><th>Annual Run Rate (₹)</th><th>Status</th>
+      </tr></thead>
+      <tbody>${rows.map(r=>`<tr>
+        <td class="td-amc">${r.amc}</td>
+        <td style="font-size:.79rem;max-width:220px">${r.fund}</td>
+        <td><span class="pill pill-blue">${r.category||'—'}</span></td>
+        <td class="td-num">${r.folios}</td>
+        <td class="td-num">${fmtN(r.totalAUM)}</td>
+        <td class="td-num">${r.trailRate!=null?r.trailRate.toFixed(3)+'%':'—'}</td>
+        <td class="td-num" style="color:var(--green);font-weight:700">${fmtN(r.trailMonthly)}</td>
+        <td class="td-num" style="color:var(--text-muted)">${fmtN(r.trailMonthly*12)}</td>
+        <td>${r.rateFound?(r.fuzzy?'<span class="pill pill-yellow">Fuzzy Match</span>':'<span class="pill pill-green">✓ Rate Found</span>'):'<span class="pill pill-red">No Rate</span>'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
+// ════════════════════════════════════════
+// HISTORY
+// ════════════════════════════════════════
+function renderHistory(){
+  const months=[...new Set(S.allHistory.map(r=>r.report_month).filter(Boolean))].sort();
+  if(!months.length){
+    document.getElementById('historyContent').innerHTML='<div class="empty-state"><div class="icon">📅</div><p>No history yet. Calculate commissions, export the CSV, and upload it next month to build history.</p></div>';
+    return;
+  }
+
+  const mSummary=months.map(m=>{
+    const rows=S.allHistory.filter(r=>r.report_month===m);
+    return{month:m,totalAUM:rows.reduce((s,r)=>s+(r.aum||0),0),trail:rows.reduce((s,r)=>s+(r.trail_monthly||0),0),folios:rows.length,amcs:[...new Set(rows.map(r=>r.amc))].length};
+  });
+  const maxTrail=Math.max(...mSummary.map(m=>m.trail),1);
+
+  const allAMCs=[...new Set(S.allHistory.map(r=>r.amc))].sort();
+  const amcMonthly={};
+  allAMCs.forEach(amc=>{
+    amcMonthly[amc]={};
+    months.forEach(m=>{amcMonthly[amc][m]=S.allHistory.filter(r=>r.amc===amc&&r.report_month===m).reduce((s,r)=>s+(r.trail_monthly||0),0)});
+  });
+
+  const ytdTrail=mSummary.reduce((s,m)=>s+m.trail,0);
+
+  document.getElementById('historyContent').innerHTML=`
+    <div class="card">
+      <div class="card-title"><div class="icon">📈</div>Month-on-Month Summary</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Month</th><th>Total AUM</th><th>Expected Trail</th><th>MoM Change</th><th>MoM %</th><th>Annual Run Rate</th><th>Folios</th><th>AMCs</th></tr></thead>
+        <tbody>
+          ${mSummary.map((m,i)=>{
+            const prev=i>0?mSummary[i-1]:null;
+            const diff=prev?m.trail-prev.trail:null;
+            const pct=prev&&prev.trail>0?((diff/prev.trail)*100).toFixed(1):null;
+            const isCurr=m.month===S.results?.reportMonth;
+            return`<tr style="${isCurr?'background:var(--green-bg)':''}">
+              <td style="font-weight:700;color:var(--navy-mid)">${fmtMonth(m.month)}${isCurr?'<span class="pill pill-green" style="margin-left:.4rem;font-size:.65rem">Latest</span>':''}</td>
+              <td class="td-num">${fmtCr(m.totalAUM)}</td>
+              <td class="td-num" style="color:var(--green);font-weight:700">${fmt(m.trail)}</td>
+              <td class="td-num">${diff!==null?'<span class="'+(diff>=0?'delta-up':'delta-dn')+'">'+(diff>=0?'+':'')+fmt(diff)+'</span>':'—'}</td>
+              <td class="td-num">${pct!==null?'<span class="'+(+pct>=0?'delta-up':'delta-dn')+'">'+(+pct>=0?'+':'')+pct+'%</span>':'—'}</td>
+              <td class="td-num" style="color:var(--text-muted)">${fmt(m.trail*12)}</td>
+              <td class="td-num">${m.folios}</td>
+              <td class="td-num">${m.amcs}</td>
+            </tr>`;
+          }).join('')}
+          <tr style="background:var(--navy)">
+            <td style="color:var(--gold-light);font-weight:700;padding:.65rem .9rem;font-size:.8rem">YEAR TO DATE</td>
+            <td></td>
+            <td class="td-num" style="color:var(--gold-light);font-weight:700">${fmt(ytdTrail)}</td>
+            <td></td><td></td>
+            <td class="td-num" style="color:var(--gold-light)">${fmt(ytdTrail/months.length*12)}</td>
+            <td></td><td></td>
+          </tr>
+        </tbody>
+      </table></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><div class="icon">📊</div>Trail Commission Trend</div>
+      <div style="display:flex;gap:1.5rem;align-items:flex-end;padding:.5rem 0;overflow-x:auto">
+        ${mSummary.map(m=>{
+          const h=Math.max(8,Math.round((m.trail/maxTrail)*64));
+          const isCurr=m.month===S.results?.reportMonth;
+          return`<div style="display:flex;flex-direction:column;align-items:center;gap:5px;min-width:70px">
+            <div style="font-family:'DM Mono',monospace;font-size:.68rem;color:var(--text-muted)">${fmt(m.trail)}</div>
+            <div style="width:52px;height:${h}px;background:${isCurr?'var(--gold)':'var(--navy-light)'};border-radius:4px 4px 0 0"></div>
+            <div style="font-size:.72rem;color:${isCurr?'var(--navy-mid)':'var(--text-muted)'};font-weight:${isCurr?700:400}">${fmtMonth(m.month)}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><div class="icon">🏦</div>AMC-wise Trail — Month-on-Month</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>AMC</th>${months.map(m=>'<th>'+fmtMonth(m)+'</th>').join('')}<th>Total</th><th>Trend</th></tr></thead>
+        <tbody>${allAMCs.map(amc=>{
+          const vals=months.map(m=>amcMonthly[amc][m]||0);
+          const total=vals.reduce((s,v)=>s+v,0);
+          const last=vals[vals.length-1], prev=vals[vals.length-2];
+          const trend=vals.length<2?'→':last>prev?'▲':last<prev?'▼':'→';
+          const tc=trend==='▲'?'var(--green)':trend==='▼'?'var(--red)':'var(--amber)';
+          return`<tr>
+            <td class="td-amc">${amc}</td>
+            ${vals.map((v,i)=>'<td class="td-num '+(i===vals.length-1?'td-curr':'')+'">'+(v>0?fmt(v):'—')+'</td>').join('')}
+            <td class="td-num" style="font-weight:700">${fmt(total)}</td>
+            <td style="text-align:center;font-weight:700;color:${tc};font-size:1.1rem">${trend}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>
+    </div>`;
+}
+
+// ════════════════════════════════════════
+// FOLIO DETAIL
+// ════════════════════════════════════════
+function renderDetailTable(){
+  const mf=document.getElementById('detailMonthFilter').value;
+  const src=S.allHistory.length ? S.allHistory : (S.results?.folioResults||[]);
+  let data=mf ? src.filter(r=>r.report_month===mf) : src;
+  const search=document.getElementById('detailSearch').value.toLowerCase();
+  const amcF=document.getElementById('detailAmcFilter').value;
+
+  const amcs=[...new Set(src.map(r=>r.amc))].sort();
+  const sel=document.getElementById('detailAmcFilter');
+  const cv=sel.value;
+  sel.innerHTML='<option value="">All AMCs</option>'+amcs.map(a=>'<option value="'+a+'" '+(a===cv?'selected':'')+'>'+a+'</option>').join('');
+
+  if(search) data=data.filter(r=>(r.investor+r.amc+r.fund+r.folio).toLowerCase().includes(search));
+  if(amcF) data=data.filter(r=>r.amc===amcF);
+  data=[...data].sort((a,b)=>(b.trail_monthly||0)-(a.trail_monthly||0));
+
+  if(!data.length){document.getElementById('detailTable').innerHTML='<div class="empty-state"><div class="icon">🔍</div><p>No records found.</p></div>';return}
+
+  document.getElementById('detailTable').innerHTML=`
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th>Folio No.</th><th>Investor</th><th>Group</th><th>AMC</th><th>Fund</th>
+        <th>Category</th><th>AUM (₹)</th><th>Trail % Ann.</th><th>Trail Monthly (₹)</th><th>Annual Run Rate (₹)</th><th>Status</th>
+      </tr></thead>
+      <tbody>${data.map(r=>`<tr>
+        <td style="font-family:'DM Mono',monospace;font-size:.76rem">${r.folio}</td>
+        <td style="font-size:.8rem">${r.investor}</td>
+        <td style="font-size:.76rem;color:var(--text-muted)">${r.group_code||'—'}</td>
+        <td class="td-amc" style="font-size:.77rem">${r.amc}</td>
+        <td style="font-size:.75rem;max-width:200px">${r.fund}</td>
+        <td><span class="pill pill-blue">${r.category||'—'}</span></td>
+        <td class="td-num">${fmtN(r.aum)}</td>
+        <td class="td-num">${r.trail_rate!=null?r.trail_rate.toFixed(3)+'%':'—'}</td>
+        <td class="td-num" style="color:var(--green);font-weight:600">${fmtN(r.trail_monthly)}</td>
+        <td class="td-num" style="color:var(--text-muted)">${fmtN((r.trail_monthly||0)*12)}</td>
+        <td>${r.rate_found?(r.fuzzy?'<span class="pill pill-yellow">Fuzzy</span>':'<span class="pill pill-green">✓</span>'):'<span class="pill pill-red">No Rate</span>'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
+// ════════════════════════════════════════
+// RATE MASTER
+// ════════════════════════════════════════
+function renderRateTable(){
+  const search=document.getElementById('rateSearch').value.toLowerCase();
+  const amcF=document.getElementById('rateAmcFilter').value;
+  const amcs=[...new Set(S.rates.map(r=>r.amc))].sort();
+  const sel=document.getElementById('rateAmcFilter');
+  sel.innerHTML='<option value="">All AMCs</option>'+amcs.map(a=>'<option value="'+a+'" '+(a===sel.value?'selected':'')+'>'+a+'</option>').join('');
+  let rows=S.rates;
+  if(search) rows=rows.filter(r=>(r.amc+r.fund).toLowerCase().includes(search));
+  if(amcF) rows=rows.filter(r=>r.amc===amcF);
+  document.getElementById('rateCount').textContent=S.rates.length+' rates';
+  if(!rows.length){document.getElementById('rateTable').innerHTML='<div class="empty-state"><div class="icon">⚙️</div><p>No rates yet. Import the pre-filled Rate Master or click "+ Add Rate".</p></div>';return}
+  document.getElementById('rateTable').innerHTML=`<div class="table-wrap"><table>
+    <thead><tr><th>AMC</th><th>Fund</th><th>Category</th><th>Trail % Annual</th><th>Monthly (÷12)</th><th>Effective From</th><th>Notes</th><th>Actions</th></tr></thead>
+    <tbody>${rows.map(r=>{const ri=S.rates.indexOf(r);return`<tr>
+      <td class="td-amc">${r.amc}</td>
+      <td style="font-size:.79rem">${r.fund}</td>
+      <td><span class="pill pill-blue">${r.category||'—'}</span></td>
+      <td class="td-num" style="color:var(--green);font-weight:700">${(+r.trail||0).toFixed(3)}%</td>
+      <td class="td-num" style="color:var(--text-muted)">${(+r.trail||0)>0?((+r.trail)/12).toFixed(4)+'%':'—'}</td>
+      <td style="font-size:.77rem">${r.effectiveFrom||'—'}</td>
+      <td style="font-size:.77rem;color:var(--text-muted)">${r.notes||'—'}</td>
+      <td><div style="display:flex;gap:.3rem">
+        <button class="btn btn-outline btn-sm" onclick="editRate(${ri})">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteRate(${ri})">Del</button>
+      </div></td>
+    </tr>`}).join('')}</tbody>
+  </table></div>`;
+}
+
+function openAddRate(){S.editIdx=-1;document.getElementById('modalTitle').textContent='Add Rate';['m_amc','m_fund','m_trail','m_from','m_notes'].forEach(id=>document.getElementById(id).value='');document.getElementById('rateModal').classList.add('open')}
+function editRate(i){
+  S.editIdx=i;const r=S.rates[i];
+  document.getElementById('modalTitle').textContent='Edit Rate';
+  document.getElementById('m_amc').value=r.amc;document.getElementById('m_fund').value=r.fund;
+  document.getElementById('m_cat').value=r.category||'Equity';
+  document.getElementById('m_trail').value=r.trail;
+  document.getElementById('m_from').value=r.effectiveFrom||'';document.getElementById('m_notes').value=r.notes||'';
+  document.getElementById('rateModal').classList.add('open');
+}
+function saveRate(){
+  const amc=document.getElementById('m_amc').value.trim();
+  const fund=document.getElementById('m_fund').value.trim();
+  if(!amc||!fund){toast('AMC and Fund are required','error');return}
+  const rate={amc,fund,category:document.getElementById('m_cat').value,trail:+document.getElementById('m_trail').value||0,effectiveFrom:document.getElementById('m_from').value,notes:document.getElementById('m_notes').value};
+  if(S.editIdx>=0) S.rates[S.editIdx]=rate; else S.rates.push(rate);
+  localStorage.setItem('ciq_rates',JSON.stringify(S.rates));
+  closeModal();renderRateTable();
+  toast(S.editIdx>=0?'Rate updated':'Rate added','success');
+}
+function deleteRate(i){if(!confirm('Delete this rate?'))return;S.rates.splice(i,1);localStorage.setItem('ciq_rates',JSON.stringify(S.rates));renderRateTable();toast('Rate deleted')}
+function closeModal(){document.getElementById('rateModal').classList.remove('open')}
+
+// ════════════════════════════════════════
+// IMPORT / EXPORT
+// ════════════════════════════════════════
+function exportCommission(){
+  const src=S.allHistory.length ? S.allHistory : (S.results?.folioResults||[]);
+  if(!src.length){toast('No data to export','error');return}
+  const mf=document.getElementById('monthFilter').value;
+  const rows=(mf?src.filter(r=>r.report_month===mf):src).map(r=>({
+    report_month:r.report_month, folio:r.folio, investor:r.investor,
+    group_code:r.group_code, amc:r.amc, fund:r.fund,
+    category:r.category, fund_class:r.fund_class,
+    aum:r.aum, trail_rate:r.trail_rate,
+    trail_monthly:(r.trail_monthly||0).toFixed(2),
+    annual_run_rate:((r.trail_monthly||0)*12).toFixed(2),
+  }));
+  const month=mf||S.results?.reportMonth||'all';
+  dlCSV(rows,'CommissionIQ_'+month.replace('-','_')+'.csv');
+  toast('Exported! Save this file — upload it next month for history tracking','success');
+}
+
+function exportFullHistory(){
+  if(!S.allHistory.length){toast('No history to export','error');return}
+  dlCSV(S.allHistory.map(r=>({report_month:r.report_month,folio:r.folio,investor:r.investor,group_code:r.group_code,amc:r.amc,fund:r.fund,category:r.category,aum:r.aum,trail_rate:r.trail_rate,trail_monthly:(r.trail_monthly||0).toFixed(2)})),'CommissionIQ_Full_History.csv');
+}
+
+function exportDetail(){exportCommission()}
+
+function exportRates(){
+  dlCSV(S.rates.map(r=>({'AMC':r.amc,'Fund':r.fund,'Category':r.category,'Trail %':r.trail,'Effective From':r.effectiveFrom,'Notes':r.notes})),'CommissionIQ_Rates.csv');
+}
+
+function importRates(){document.getElementById('rateImportFile').click()}
+function handleRateImport(e){
+  const f=e.target.files[0]; if(!f) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const wb=XLSX.read(ev.target.result,{type:'binary'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    // Smart header detection for rate import too
+    const raw=XLSX.utils.sheet_to_json(ws,{defval:'',header:1});
+    let hdrIdx=0;
+    for(let i=0;i<Math.min(5,raw.length);i++){
+      const j=raw[i].map(c=>String(c||'').toLowerCase()).join('|');
+      if(j.includes('amc')&&(j.includes('fund')||j.includes('trail'))){hdrIdx=i;break}
+    }
+    const hdrs=raw[hdrIdx].map(c=>String(c||'').trim());
+    const rows=raw.slice(hdrIdx+1).map(row=>{const o={};hdrs.forEach((h,i)=>{if(h)o[h]=row[i]??''});return o});
+    let added=0;
+    rows.forEach(r=>{
+      const amc=n(r['AMC']||r['amc']);
+      const fund=n(r['Fund']||r['fund']||r['AMC FUND']||r['AMC Fund']);
+      const trail=parseFloat(r['Trail %']||r['Trail']||r['trail']||0);
+      if(amc&&fund){
+        // Update if already exists, else add
+        const ex=S.rates.findIndex(x=>n(x.amc).toLowerCase()===amc.toLowerCase()&&n(x.fund).toLowerCase()===fund.toLowerCase());
+        const entry={amc,fund,category:n(r['Category']||r['Fund Category']||r['category']),trail,effectiveFrom:n(r['Effective From']||''),notes:n(r['Notes']||r['notes']||'')};
+        if(ex>=0) S.rates[ex]=entry; else S.rates.push(entry);
+        added++;
+      }
+    });
+    localStorage.setItem('ciq_rates',JSON.stringify(S.rates));
+    renderRateTable();
+    toast(added+' rates imported','success');
+  };
+  reader.readAsBinaryString(f);
+}
+
+function dlCSV(rows,fn){
+  if(!rows.length){toast('Nothing to export','error');return}
+  const h=Object.keys(rows[0]);
+  const csv=[h.join(','),...rows.map(r=>h.map(k=>{const v=r[k]??'';return typeof v==='string'&&(v.includes(',')||v.includes('"'))?'"'+v.replace(/"/g,'""')+'"':v}).join(','))].join('\n');
+  const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download=fn;a.click();
+  toast('Downloaded '+fn,'success');
+}
+
+function clearData(){
+  if(!confirm('Clear uploaded data? Rates are preserved.'))return;
+  S.aumData=null;S.prevHistory=[];S.results=null;S.allHistory=[];
+  document.getElementById('aumZone').classList.remove('done');
+  document.getElementById('prevZone').classList.remove('prev-done');
+  document.getElementById('aumStatus').innerHTML='';
+  document.getElementById('prevStatus').innerHTML='';
+  toast('Data cleared');
+}
+
+// ════════════════════════════════════════
+// FORMATTERS
+// ════════════════════════════════════════
+function fmt(n){if(!n||isNaN(n))return'₹0';const a=Math.abs(n);let s;if(a>=10000000)s='₹'+(a/10000000).toFixed(2)+' Cr';else if(a>=100000)s='₹'+(a/100000).toFixed(2)+' L';else s='₹'+a.toLocaleString('en-IN',{maximumFractionDigits:0});return n<0?'-'+s:s}
+function fmtN(n){if(!n||isNaN(n)||n===0)return'—';return fmt(n)}
+function fmtCr(n){if(!n||isNaN(n))return'₹0';if(n>=10000000)return'₹'+(n/10000000).toFixed(2)+' Cr';if(n>=100000)return'₹'+(n/100000).toFixed(2)+' L';return'₹'+n.toLocaleString('en-IN',{maximumFractionDigits:0})}
+function fmtMonth(ym){if(!ym)return'';const[y,m]=ym.split('-');return['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m-1]+' '+y}
+
+// ════════════════════════════════════════
+// TOAST + INIT
+// ════════════════════════════════════════
+function toast(msg,type){
+  const el=document.createElement('div');el.className='toast '+(type||'');el.textContent=msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(()=>el.remove(),3500);
+}
+
+document.getElementById('rateModal').addEventListener('click',function(e){if(e.target===this)closeModal()});
+
+// Default to current month
+const now=new Date();
+document.getElementById('reportMonth').value=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+
+renderRateTable();
+</script>
+</body>
+</html>
