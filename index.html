@@ -268,7 +268,7 @@ tbody tr:last-child{border-bottom:none}
     </div>
   </div>
   <div class="info-box">
-    💡 <strong>Tip:</strong> Import the pre-filled <code>RateMaster_Prefilled.xlsx</code> file — it already has all 117 AMC + Fund combinations from your AUM report. Just fill in the Trail % column and import.
+    💡 <strong>How to set up:</strong> Add one rate per AMC + Fund combination. The <strong>AMC</strong> and <strong>Fund</strong> names must match exactly what appears in your WealthMagic AUM report. If a fund has no rate, it will show "No Rate" and be excluded from commission totals.
   </div>
   <div class="card" style="padding:1.2rem 1.5rem">
     <div class="filter-bar">
@@ -341,8 +341,28 @@ tbody tr:last-child{border-bottom:none}
 // STATE
 // ════════════════════════════════════════
 const PAGES=['dashboard','history','upload','rates','detail'];
+
+// Default Tata rates — seeded on first load if no rates exist yet
+const DEFAULT_RATES=[
+  {amc:'Tata',fund:'Banking and Financial Services Reg-G',category:'Equity',trail:0,effectiveFrom:'',notes:''},
+  {amc:'Tata',fund:'India Pharma & Healthcare Reg-G',     category:'Equity',trail:0,effectiveFrom:'',notes:''},
+  {amc:'Tata',fund:'Equity Savings Reg-G',                category:'Hybrid',trail:0,effectiveFrom:'',notes:''},
+  {amc:'Tata',fund:'Focused Reg-G',                       category:'Equity',trail:0,effectiveFrom:'',notes:''},
+  {amc:'Tata',fund:'Retirement Savings Fund -PP',          category:'Hybrid',trail:0,effectiveFrom:'',notes:''},
+];
+
+function loadRates(){
+  const saved=localStorage.getItem('ciq_rates');
+  if(!saved||JSON.parse(saved).length===0){
+    // First load — seed with default Tata rates
+    localStorage.setItem('ciq_rates',JSON.stringify(DEFAULT_RATES));
+    return JSON.parse(JSON.stringify(DEFAULT_RATES));
+  }
+  return JSON.parse(saved);
+}
+
 let S={
-  rates: JSON.parse(localStorage.getItem('ciq_rates')||'[]'),
+  rates: loadRates(),
   aumData: null,
   prevHistory: [],
   results: null,
@@ -401,15 +421,14 @@ function parseFile(file,type){
       } else if(type==='prev'){
         S.prevHistory=data.map(r=>({
           report_month:n(r['report_month']||r['Report Month']||''),
-          folio:n(r['folio']||r['Folio No.']),
-          investor:n(r['investor']||r['Investor']),
-          group_code:n(r['group_code']||r['Group Code']),
           amc:n(r['amc']||r['AMC']),
           fund:n(r['fund']||r['Fund']||r['AMC Fund']),
           category:n(r['category']||r['Fund Category']),
           fund_class:n(r['fund_class']||r['Fund Class']),
           aum:parseFloat(r['aum']||r['AUM'])||0,
-          trail_rate:parseFloat(r['trail_rate']||r['Trail Rate Annual'])||0,
+          total_aum:parseFloat(r['aum']||r['AUM'])||0,
+          folio_count:parseInt(r['folio_count']||r['Folio Count'])||1,
+          trail_rate:parseFloat(r['trail_rate']||r['Trail Rate Annual']||r['trail %']||r['Trail %'])||0,
           trail_monthly:parseFloat(r['trail_monthly']||r['Trail Monthly'])||0,
           rate_found:true,
         })).filter(r=>r.report_month && r.amc);
@@ -440,16 +459,14 @@ function processReports(){
   const arnFilter=n(document.getElementById('arnFilter').value).toLowerCase();
 
   function findRate(amc,fund){
+    // Exact match only — AMC + Fund must both match
     const a=amc.toLowerCase(), f=fund.toLowerCase();
-    let m=S.rates.find(r=>n(r.amc).toLowerCase()===a && n(r.fund).toLowerCase()===f);
-    if(m) return{trail:+m.trail||0,fuzzy:false};
-    // Fuzzy: AMC match only
-    m=S.rates.find(r=>n(r.amc).toLowerCase()===a);
-    if(m) return{trail:+m.trail||0,fuzzy:true};
-    return null;
+    const m=S.rates.find(r=>n(r.amc).toLowerCase()===a && n(r.fund).toLowerCase()===f);
+    return m ? {trail:+m.trail||0} : null;
   }
 
-  const folioResults=[];
+  // ── STEP 1: Build folio-level records (for detail view) ──────────────
+  const folioRows=[];
   S.aumData.forEach(r=>{
     const folio=n(r['Folio No.']);
     const amc=n(r['AMC']);
@@ -460,32 +477,68 @@ function processReports(){
     const category=n(r['Fund Category']);
     const fundClass=n(r['Fund Class']);
     const arn=n(r['ARN']);
-
-    // Skip invalid / footer rows
-    if(!folio || isNaN(aum) || !amc || amc.toLowerCase().includes('total')) return;
-    // ARN filter if specified
+    if(!folio||isNaN(aum)||!amc||amc.toLowerCase().includes('total')) return;
     if(arnFilter && !arn.toLowerCase().includes(arnFilter)) return;
+    folioRows.push({folio,investor,group_code:grpCode,amc,fund,category,fund_class:fundClass,arn,aum});
+  });
 
-    const rate=findRate(amc,fund);
-    const trail=rate ? (aum * rate.trail / 100 / 12) : 0;
+  // ── STEP 2: Group by AMC + Fund → sum AUM → apply rate ONCE ─────────
+  const fundMap={};
+  folioRows.forEach(r=>{
+    const k=r.amc+'||'+r.fund;
+    if(!fundMap[k]) fundMap[k]={
+      amc:r.amc, fund:r.fund, category:r.category, fund_class:r.fund_class,
+      totalAUM:0, folioCount:0, folios:[],
+    };
+    fundMap[k].totalAUM += r.aum;
+    fundMap[k].folioCount++;
+    fundMap[k].folios.push(r);
+  });
 
-    folioResults.push({
+  // ── STEP 3: Apply rate at Fund level → Commission = Fund AUM × Rate ÷ 12
+  const fundResults=[];
+  Object.values(fundMap).forEach(f=>{
+    const rate=findRate(f.amc,f.fund);
+    const trail=rate ? (f.totalAUM * rate.trail / 100 / 12) : 0;
+    fundResults.push({
       report_month: reportMonth,
-      folio, investor, group_code: grpCode,
-      amc, fund, category, fund_class: fundClass, arn,
-      aum, trail_rate: rate ? rate.trail : null,
+      amc: f.amc, fund: f.fund, category: f.category, fund_class: f.fund_class,
+      total_aum: f.totalAUM, folio_count: f.folioCount,
+      trail_rate: rate ? rate.trail : null,
       trail_monthly: trail,
-      rate_found: !!rate, fuzzy: rate?.fuzzy||false,
+      rate_found: !!rate,
+      // keep folio breakdown for detail view
+      _folios: f.folios.map(fo=>({
+        ...fo,
+        report_month: reportMonth,
+        trail_rate: rate ? rate.trail : null,
+        // each folio's proportional trail = folio AUM / fund AUM × fund trail
+        trail_monthly: rate ? (fo.aum * rate.trail / 100 / 12) : 0,
+        rate_found: !!rate,
+      })),
     });
   });
 
-  S.results={folioResults, reportMonth};
+  S.results={fundResults, reportMonth};
 
-  // Merge with previous history (replace if same month recalculated)
+  // Flatten folio records for detail view + history export
+  const folioResults=fundResults.flatMap(f=>f._folios);
+
+  // Merge with previous history
   const filtered=S.prevHistory.filter(r=>r.report_month!==reportMonth);
-  S.allHistory=[...filtered, ...folioResults];
+  // Store fund-level records in allHistory for dashboard/history
+  const historyRows=fundResults.map(f=>({
+    report_month:f.report_month, amc:f.amc, fund:f.fund, category:f.category,
+    fund_class:f.fund_class, aum:f.total_aum, folio_count:f.folio_count,
+    trail_rate:f.trail_rate, trail_monthly:f.trail_monthly,
+    rate_found:f.rate_found,
+    // preserve folios for detail
+    _folios:f._folios,
+  }));
+  S.allHistory=[...filtered, ...historyRows];
+  S._folioDetail=folioResults; // for detail view
 
-  // Populate month filter dropdowns
+  // Populate month filters
   const allMonths=[...new Set(S.allHistory.map(r=>r.report_month).filter(Boolean))].sort();
   ['monthFilter','detailMonthFilter'].forEach(id=>{
     const sel=document.getElementById(id);
@@ -493,9 +546,10 @@ function processReports(){
     sel.innerHTML='<option value="">All Months</option>'+allMonths.map(m=>'<option value="'+m+'" '+(m===cur?'selected':'')+'>'+fmtMonth(m)+'</option>').join('');
   });
 
-  const total=folioResults.reduce((s,r)=>s+r.trail_monthly,0);
-  const noRate=folioResults.filter(r=>!r.rate_found).length;
-  toast('✅ Done — '+folioResults.length+' folios · Expected trail: '+fmt(total)+(noRate?' · ⚠ '+noRate+' missing rates':''),'success');
+  const total=fundResults.reduce((s,r)=>s+r.trail_monthly,0);
+  const noRate=fundResults.filter(r=>!r.rate_found).length;
+  const fundCount=fundResults.length;
+  toast('✅ Done — '+fundCount+' funds · '+folioResults.length+' folios · Expected trail: '+fmt(total)+(noRate?' · ⚠ '+noRate+' missing rates':''),'success');
   showPage('dashboard');
 }
 
@@ -512,14 +566,14 @@ function renderDashboard(){
   const search=(document.getElementById('dashSearch')||{value:''}).value.toLowerCase();
   const amcF=(document.getElementById('dashAmcFilter')||{value:''}).value;
 
-  const src=S.allHistory.length ? S.allHistory : (S.results.folioResults||[]);
+  const src=S.allHistory.length ? S.allHistory : (S.results?.fundResults||[]);
   const data=src.filter(r=>!mf||r.report_month===mf);
 
   const totalTrail=data.reduce((s,r)=>s+(r.trail_monthly||0),0);
-  const totalAUM=data.reduce((s,r)=>s+(r.aum||0),0);
+  const totalAUM=data.reduce((s,r)=>s+(r.aum||r.total_aum||0),0);
   const noRate=data.filter(r=>!r.rate_found).length;
   const months=[...new Set(S.allHistory.map(r=>r.report_month).filter(Boolean))].sort();
-  const folioCount=data.length;
+  const folioCount=data.reduce((s,r)=>s+(r.folio_count||1),0);
   const amcCount=[...new Set(data.map(r=>r.amc))].length;
 
   document.getElementById('dashSubtitle').textContent=
@@ -552,23 +606,19 @@ function renderDashboard(){
       ${noRate?'<div class="ribbon-divider"></div><div class="ribbon-item"><div class="ribbon-val" style="color:#eb5757">'+noRate+'</div><div class="ribbon-lbl">Missing Rates</div></div>':''}
     </div>`;
 
-  // Group by AMC + Fund
-  const grouped={};
-  data.forEach(r=>{
-    const k=r.amc+'||'+r.fund;
-    if(!grouped[k]) grouped[k]={amc:r.amc,fund:r.fund,category:r.category,totalAUM:0,trailRate:r.trail_rate,trailMonthly:0,folios:0,rateFound:r.rate_found,fuzzy:r.fuzzy};
-    grouped[k].totalAUM+=r.aum||0;
-    grouped[k].trailMonthly+=r.trail_monthly||0;
-    grouped[k].folios++;
-    if(r.rate_found) grouped[k].rateFound=true;
-  });
-
-  let rows=Object.values(grouped);
+  // Data is already fund-level — just filter and sort
+  let rows=data.map(r=>({
+    amc:r.amc, fund:r.fund, category:r.category,
+    totalAUM:r.aum||r.total_aum||0,
+    trailRate:r.trail_rate, trailMonthly:r.trail_monthly||0,
+    folios:r.folio_count||1,
+    rateFound:r.rate_found,
+  }));
   if(search) rows=rows.filter(r=>r.amc.toLowerCase().includes(search)||r.fund.toLowerCase().includes(search));
   if(amcF) rows=rows.filter(r=>r.amc===amcF);
   rows.sort((a,b)=>b.trailMonthly-a.trailMonthly);
 
-  const amcs=[...new Set(Object.values(grouped).map(r=>r.amc))].sort();
+  const amcs=[...new Set(data.map(r=>r.amc))].sort();
 
   if(!rows.length){
     document.getElementById('dashTable').innerHTML='<div class="empty-state"><div class="icon">🔍</div><p>No results match your filter.</p></div>';
@@ -597,7 +647,7 @@ function renderDashboard(){
         <td class="td-num">${r.trailRate!=null?r.trailRate.toFixed(3)+'%':'—'}</td>
         <td class="td-num" style="color:var(--green);font-weight:700">${fmtN(r.trailMonthly)}</td>
         <td class="td-num" style="color:var(--text-muted)">${fmtN(r.trailMonthly*12)}</td>
-        <td>${r.rateFound?(r.fuzzy?'<span class="pill pill-yellow">Fuzzy Match</span>':'<span class="pill pill-green">✓ Rate Found</span>'):'<span class="pill pill-red">No Rate</span>'}</td>
+        <td>${r.rateFound?'<span class="pill pill-green">✓ Rate Found</span>':'<span class="pill pill-red">No Rate</span>'}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
 }
@@ -614,7 +664,7 @@ function renderHistory(){
 
   const mSummary=months.map(m=>{
     const rows=S.allHistory.filter(r=>r.report_month===m);
-    return{month:m,totalAUM:rows.reduce((s,r)=>s+(r.aum||0),0),trail:rows.reduce((s,r)=>s+(r.trail_monthly||0),0),folios:rows.length,amcs:[...new Set(rows.map(r=>r.amc))].length};
+    return{month:m,totalAUM:rows.reduce((s,r)=>s+(r.aum||r.total_aum||0),0),trail:rows.reduce((s,r)=>s+(r.trail_monthly||0),0),folios:rows.reduce((s,r)=>s+(r.folio_count||1),0),funds:rows.length,amcs:[...new Set(rows.map(r=>r.amc))].length};
   });
   const maxTrail=Math.max(...mSummary.map(m=>m.trail),1);
 
@@ -631,7 +681,7 @@ function renderHistory(){
     <div class="card">
       <div class="card-title"><div class="icon">📈</div>Month-on-Month Summary</div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Month</th><th>Total AUM</th><th>Expected Trail</th><th>MoM Change</th><th>MoM %</th><th>Annual Run Rate</th><th>Folios</th><th>AMCs</th></tr></thead>
+        <thead><tr><th>Month</th><th>Total AUM</th><th>Expected Trail</th><th>MoM Change</th><th>MoM %</th><th>Annual Run Rate</th><th>Funds</th><th>Folios</th><th>AMCs</th></tr></thead>
         <tbody>
           ${mSummary.map((m,i)=>{
             const prev=i>0?mSummary[i-1]:null;
@@ -645,6 +695,7 @@ function renderHistory(){
               <td class="td-num">${diff!==null?'<span class="'+(diff>=0?'delta-up':'delta-dn')+'">'+(diff>=0?'+':'')+fmt(diff)+'</span>':'—'}</td>
               <td class="td-num">${pct!==null?'<span class="'+(+pct>=0?'delta-up':'delta-dn')+'">'+(+pct>=0?'+':'')+pct+'%</span>':'—'}</td>
               <td class="td-num" style="color:var(--text-muted)">${fmt(m.trail*12)}</td>
+              <td class="td-num">${m.funds}</td>
               <td class="td-num">${m.folios}</td>
               <td class="td-num">${m.amcs}</td>
             </tr>`;
@@ -702,7 +753,8 @@ function renderHistory(){
 // ════════════════════════════════════════
 function renderDetailTable(){
   const mf=document.getElementById('detailMonthFilter').value;
-  const src=S.allHistory.length ? S.allHistory : (S.results?.folioResults||[]);
+  // Detail view uses folio-level records (proportional trail per folio)
+  const src=S._folioDetail||(S.allHistory.flatMap(r=>r._folios||[{...r}]));
   let data=mf ? src.filter(r=>r.report_month===mf) : src;
   const search=document.getElementById('detailSearch').value.toLowerCase();
   const amcF=document.getElementById('detailAmcFilter').value;
@@ -735,7 +787,7 @@ function renderDetailTable(){
         <td class="td-num">${r.trail_rate!=null?r.trail_rate.toFixed(3)+'%':'—'}</td>
         <td class="td-num" style="color:var(--green);font-weight:600">${fmtN(r.trail_monthly)}</td>
         <td class="td-num" style="color:var(--text-muted)">${fmtN((r.trail_monthly||0)*12)}</td>
-        <td>${r.rate_found?(r.fuzzy?'<span class="pill pill-yellow">Fuzzy</span>':'<span class="pill pill-green">✓</span>'):'<span class="pill pill-red">No Rate</span>'}</td>
+        <td>${r.rate_found?'<span class="pill pill-green">✓</span>':'<span class="pill pill-red">No Rate</span>'}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
 }
@@ -753,7 +805,7 @@ function renderRateTable(){
   if(search) rows=rows.filter(r=>(r.amc+r.fund).toLowerCase().includes(search));
   if(amcF) rows=rows.filter(r=>r.amc===amcF);
   document.getElementById('rateCount').textContent=S.rates.length+' rates';
-  if(!rows.length){document.getElementById('rateTable').innerHTML='<div class="empty-state"><div class="icon">⚙️</div><p>No rates yet. Import the pre-filled Rate Master or click "+ Add Rate".</p></div>';return}
+  if(!rows.length){document.getElementById('rateTable').innerHTML='<div class="empty-state"><div class="icon">⚙️</div><p>No rates yet. Click "+ Add Rate" to begin, or import a CSV.</p></div>';return}
   document.getElementById('rateTable').innerHTML=`<div class="table-wrap"><table>
     <thead><tr><th>AMC</th><th>Fund</th><th>Category</th><th>Trail % Annual</th><th>Monthly (÷12)</th><th>Effective From</th><th>Notes</th><th>Actions</th></tr></thead>
     <tbody>${rows.map(r=>{const ri=S.rates.indexOf(r);return`<tr>
@@ -799,14 +851,15 @@ function closeModal(){document.getElementById('rateModal').classList.remove('ope
 // IMPORT / EXPORT
 // ════════════════════════════════════════
 function exportCommission(){
-  const src=S.allHistory.length ? S.allHistory : (S.results?.folioResults||[]);
+  const src=S.allHistory.length ? S.allHistory : (S.results?.fundResults||[]);
   if(!src.length){toast('No data to export','error');return}
   const mf=document.getElementById('monthFilter').value;
   const rows=(mf?src.filter(r=>r.report_month===mf):src).map(r=>({
-    report_month:r.report_month, folio:r.folio, investor:r.investor,
-    group_code:r.group_code, amc:r.amc, fund:r.fund,
-    category:r.category, fund_class:r.fund_class,
-    aum:r.aum, trail_rate:r.trail_rate,
+    report_month:r.report_month,
+    amc:r.amc, fund:r.fund, category:r.category, fund_class:r.fund_class,
+    folio_count:r.folio_count||r.folios||1,
+    aum:r.aum||r.total_aum||0,
+    trail_rate:r.trail_rate,
     trail_monthly:(r.trail_monthly||0).toFixed(2),
     annual_run_rate:((r.trail_monthly||0)*12).toFixed(2),
   }));
