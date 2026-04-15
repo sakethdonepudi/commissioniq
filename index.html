@@ -325,11 +325,11 @@ tbody tr:last-child{border-bottom:none}
     <!-- Tenure-based slab table -->
     <div style="margin-top:1rem">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
-        <label class="form-label" style="margin:0">Trail % Slabs — by years invested</label>
+        <label class="form-label" style="margin:0">Trail % Slabs — by investment date range</label>
         <button class="btn btn-outline btn-sm" onclick="addSlabRow()" type="button">+ Add Slab</button>
       </div>
       <div style="font-size:.73rem;color:var(--text-muted);margin-bottom:.6rem">
-        Define rate slabs by tenure. "Up to year" = exclusive upper bound (e.g. 4 means years 0–4). Last slab = applies forever after. Single slab = flat rate (legacy behaviour).
+        Enter the date range each commission rate applies to, based on the investor's <b>Invested Since</b> date. Leave "To Date" blank on the last slab to mean "present and onwards". Single slab = flat rate for all investments.
       </div>
       <div id="slabRows" style="display:flex;flex-direction:column;gap:.4rem"></div>
     </div>
@@ -349,17 +349,25 @@ const PAGES=['dashboard','history','upload','rates','detail'];
 
 // Default Tata rates — seeded on first load if no rates exist yet
 const DEFAULT_RATES=[
-  {amc:'Tata',fund:'Banking and Financial Services Reg-G',category:'Equity',trail:0,slabs:[{upToYears:null,rate:0}],effectiveFrom:'',notes:'Fill in your actual rates'},
-  {amc:'Tata',fund:'India Pharma & Healthcare Reg-G',     category:'Equity',trail:0,slabs:[{upToYears:null,rate:0}],effectiveFrom:'',notes:'Fill in your actual rates'},
-  {amc:'Tata',fund:'Equity Savings Reg-G',                category:'Hybrid',trail:0,slabs:[{upToYears:null,rate:0}],effectiveFrom:'',notes:'Fill in your actual rates'},
-  {amc:'Tata',fund:'Focused Reg-G',                       category:'Equity',trail:0,slabs:[{upToYears:4,rate:1.20},{upToYears:null,rate:1.00}],effectiveFrom:'',notes:'Example: 1.20% for first 4 yrs, 1.00% after'},
-  {amc:'Tata',fund:'Retirement Savings Fund -PP',          category:'Hybrid',trail:0,slabs:[{upToYears:null,rate:0}],effectiveFrom:'',notes:'Fill in your actual rates'},
+  {amc:'Tata',fund:'Banking and Financial Services Reg-G',category:'Equity',trail:0,slabs:[{fromDate:'',toDate:'',rate:0}],effectiveFrom:'',notes:'Fill in your actual rates'},
+  {amc:'Tata',fund:'India Pharma & Healthcare Reg-G',     category:'Equity',trail:0,slabs:[{fromDate:'',toDate:'',rate:0}],effectiveFrom:'',notes:'Fill in your actual rates'},
+  {amc:'Tata',fund:'Equity Savings Reg-G',                category:'Hybrid',trail:0,slabs:[{fromDate:'',toDate:'',rate:0}],effectiveFrom:'',notes:'Fill in your actual rates'},
+  {amc:'Tata',fund:'Focused Reg-G',                       category:'Equity',trail:1.20,slabs:[{fromDate:'01/01/2020',toDate:'31/12/2023',rate:1.20},{fromDate:'01/01/2024',toDate:'',rate:1.00}],effectiveFrom:'',notes:'Example: 1.20% for 2020–2023, 1.00% from 2024'},
+  {amc:'Tata',fund:'Retirement Savings Fund -PP',          category:'Hybrid',trail:0,slabs:[{fromDate:'',toDate:'',rate:0}],effectiveFrom:'',notes:'Fill in your actual rates'},
 ];
 
-// Migrate old flat-rate records (no slabs) to slab format seamlessly
+// Migrate old flat-rate or upToYears records → date-based slab format
 function migrateRate(r){
   if(!r.slabs||!r.slabs.length){
-    return{...r, slabs:[{upToYears:null,rate:+r.trail||0}]};
+    return{...r, slabs:[{fromDate:'',toDate:'',rate:+r.trail||0}]};
+  }
+  // If slabs still use old upToYears format, convert to date ranges
+  if(r.slabs[0].upToYears!==undefined||r.slabs[0].fromDate===undefined){
+    let converted=[];
+    r.slabs.forEach((s,i)=>{
+      converted.push({fromDate:'',toDate:'',rate:+s.rate||0});
+    });
+    return{...r,slabs:converted};
   }
   return r;
 }
@@ -507,19 +515,32 @@ function processReports(){
     return null;
   }
 
-  // ── Given a rate entry and how many months invested, pick the right slab trail % ──
-  function resolveSlabRate(rateEntry, monthsInvested){
+  // ── Parse a DD/MM/YYYY slab boundary date string → Date ────────────────
+  function parseSlabDate(str){
+    if(!str) return null;
+    const m=String(str).trim().match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    return m ? new Date(+m[3],+m[2]-1,+m[1]) : null;
+  }
+
+  // ── Given a rate entry and the folio's investedSince Date, pick the right slab ──
+  // Slabs: [{fromDate:'01/01/2020', toDate:'31/12/2023', rate:1.20}, {fromDate:'01/01/2024', toDate:'', rate:1.00}]
+  // fromDate is the investment-start boundary; toDate is the end (blank = open-ended/current)
+  function resolveSlabRate(rateEntry, investedSince){
     if(!rateEntry) return null;
     const slabs=rateEntry.slabs;
-    // Legacy flat-rate records (no slabs array) — just return trail
     if(!slabs||!slabs.length) return +rateEntry.trail||0;
-    const yearsInvested=monthsInvested/12;
-    // Slabs are sorted ascending by upToYears; last slab = open-ended
+    // If no investedSince date, use the first slab (safest default)
+    if(!investedSince) return +slabs[0].rate||0;
+    // Find the slab whose date range contains the investedSince date
     for(let i=0;i<slabs.length;i++){
       const s=slabs[i];
-      const isLast=i===slabs.length-1;
-      if(isLast || yearsInvested < +s.upToYears) return +s.rate||0;
+      const from=parseSlabDate(s.fromDate);
+      const to=parseSlabDate(s.toDate);
+      const afterFrom = !from || investedSince>=from;
+      const beforeTo  = !to   || investedSince<=to;
+      if(afterFrom && beforeTo) return +s.rate||0;
     }
+    // Fallback: last slab
     return +slabs[slabs.length-1].rate||0;
   }
 
@@ -575,14 +596,18 @@ function processReports(){
       let appliedRate=null;
       let slabLabel=null;
       if(rateEntry){
-        const monthsInvested=fo.investedSince
-          ? Math.max(0,Math.round((reportDate - fo.investedSince)/(1000*60*60*24*30.44)))
-          : null;
-        appliedRate=resolveSlabRate(rateEntry, monthsInvested!==null ? monthsInvested : 0);
+        appliedRate=resolveSlabRate(rateEntry, fo.investedSince||null);
         // Build human-readable slab label for display
         if(rateEntry.slabs&&rateEntry.slabs.length>1&&fo.investedSince){
-          const yrs=(monthsInvested/12).toFixed(1);
-          slabLabel=`Yr ${yrs} → ${appliedRate}%`;
+          // Find which slab matched and show its date range
+          const matchedSlab=rateEntry.slabs.find((s,i)=>{
+            const from=parseSlabDate(s.fromDate);
+            const to=parseSlabDate(s.toDate);
+            return (!from||fo.investedSince>=from)&&(!to||fo.investedSince<=to);
+          })||rateEntry.slabs[rateEntry.slabs.length-1];
+          const fromStr=matchedSlab.fromDate||'—';
+          const toStr=matchedSlab.toDate||'present';
+          slabLabel=`${fromStr} – ${toStr} → ${appliedRate}%`;
         }
       }
       return{
@@ -598,7 +623,7 @@ function processReports(){
     // Fund-level totals = sum of folio-level (correct because each folio may have different slab rate)
     const totalTrail=foliosWithRates.reduce((s,fo)=>s+(fo.trail_monthly||0),0);
     // Effective blended rate for display
-    const blendedRate=f.totalAUM>0 ? (totalTrail*12/f.totalAUM*100) : (rateEntry?resolveSlabRate(rateEntry,0):null);
+    const blendedRate=f.totalAUM>0 ? (totalTrail*12/f.totalAUM*100) : (rateEntry?resolveSlabRate(rateEntry,null):null);
 
     fundResults.push({
       report_month: reportMonth,
@@ -913,13 +938,15 @@ function renderRateTable(){
       let slabDisplay='—';
       if(r.slabs&&r.slabs.length){
         if(r.slabs.length===1){
-          slabDisplay=`<span style="color:var(--green);font-weight:700">${(+r.slabs[0].rate||0).toFixed(3)}%</span> <span style="color:var(--text-muted);font-size:.75rem">flat</span>`;
+          const s=r.slabs[0];
+          const dateRange=s.fromDate?(s.fromDate+' – '+(s.toDate||'present')):'';
+          slabDisplay=`<span style="color:var(--green);font-weight:700">${(+s.rate||0).toFixed(3)}%</span>`+(dateRange?` <span style="color:var(--text-muted);font-size:.73rem">${dateRange}</span>`:'<span style="color:var(--text-muted);font-size:.73rem"> flat</span>');
         } else {
           slabDisplay=r.slabs.map((s,i)=>{
-            const from=i===0?'Yr 0':'Yr '+(r.slabs[i-1].upToYears||'?');
-            const to=s.upToYears!=null?'–'+s.upToYears:'+'  ;
-            return `<span style="font-size:.76rem;white-space:nowrap"><span style="color:var(--text-muted)">${from}${to}:</span> <b style="color:var(--green)">${(+s.rate).toFixed(2)}%</b></span>`;
-          }).join('<br>');
+            const from=s.fromDate||'—';
+            const to=s.toDate||'present';
+            return `<span style="font-size:.75rem;white-space:nowrap;display:block"><span style="color:var(--text-muted)">${from} – ${to}:</span> <b style="color:var(--green)">${(+s.rate).toFixed(2)}%</b></span>`;
+          }).join('');
         }
       } else if(r.trail){
         slabDisplay=`<span style="color:var(--green);font-weight:700">${(+r.trail||0).toFixed(3)}%</span> <span style="color:var(--text-muted);font-size:.75rem">legacy</span>`;
@@ -941,33 +968,45 @@ function renderRateTable(){
 // ── Slab row helpers ──────────────────────────────────────────────────
 function renderSlabRows(slabs){
   const container=document.getElementById('slabRows');
-  if(!slabs||!slabs.length) slabs=[{upToYears:'',rate:''}];
-  container.innerHTML=slabs.map((s,i)=>`
-    <div style="display:flex;gap:.5rem;align-items:center" id="slab_row_${i}">
-      <div style="flex:1">
-        <input class="form-input" id="slab_upto_${i}" type="number" min="0" step="0.5"
-          placeholder="${i===0?'e.g. 4 (years 0–4)':'Leave blank = forever'}"
-          value="${s.upToYears||''}"
-          style="font-size:.82rem"
-          oninput="updateSlabLabel(${i})"/>
-      </div>
-      <div style="flex-shrink:0;font-size:.78rem;color:var(--text-muted);width:72px;text-align:center" id="slab_lbl_${i}">
-        ${i===0?'Year 0 →':'Year '+((slabs[i-1]?.upToYears||'?'))+' →'}
-      </div>
-      <div style="flex:1">
-        <input class="form-input" id="slab_rate_${i}" type="number" min="0" step="0.001"
-          placeholder="Trail % e.g. 1.20"
-          value="${s.rate||''}"
-          style="font-size:.82rem"/>
-      </div>
-      <div style="color:var(--text-muted);font-size:.78rem;width:24px;text-align:center">%</div>
-      ${slabs.length>1?`<button class="btn btn-danger btn-sm" onclick="removeSlabRow(${i})" type="button" style="padding:.2rem .5rem">✕</button>`:'<div style="width:46px"></div>'}
+  if(!slabs||!slabs.length) slabs=[{fromDate:'',toDate:'',rate:''}];
+  container.innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 16px 1fr 56px 40px;gap:.35rem;align-items:center;margin-bottom:.25rem;padding:0 2px">
+      <div style="font-size:.72rem;color:var(--text-muted);font-weight:600">FROM (DD/MM/YYYY)</div>
+      <div></div>
+      <div style="font-size:.72rem;color:var(--text-muted);font-weight:600">TO (blank = present)</div>
+      <div style="font-size:.72rem;color:var(--text-muted);font-weight:600;text-align:center">TRAIL %</div>
+      <div></div>
+    </div>
+  `+slabs.map((s,i)=>`
+    <div style="display:grid;grid-template-columns:1fr 16px 1fr 56px 40px;gap:.35rem;align-items:center;margin-bottom:.3rem" id="slab_row_${i}">
+      <input class="form-input" id="slab_from_${i}"
+        placeholder="e.g. 01/01/2020"
+        value="${s.fromDate||''}"
+        style="font-size:.83rem;font-family:'DM Mono',monospace;letter-spacing:.02em"
+        oninput="validateSlabDate(this)"/>
+      <div style="text-align:center;color:var(--text-muted);font-size:.85rem">→</div>
+      <input class="form-input" id="slab_to_${i}"
+        placeholder="${i===slabs.length-1?'blank = present':'e.g. 31/12/2023'}"
+        value="${s.toDate||''}"
+        style="font-size:.83rem;font-family:'DM Mono',monospace;letter-spacing:.02em"
+        oninput="validateSlabDate(this)"/>
+      <input class="form-input" id="slab_rate_${i}" type="number" min="0" step="0.001"
+        placeholder="1.20"
+        value="${s.rate||''}"
+        style="font-size:.83rem;text-align:center"/>
+      ${slabs.length>1?`<button class="btn btn-danger btn-sm" onclick="removeSlabRow(${i})" type="button" style="padding:.15rem .4rem;font-size:.8rem">✕</button>`:'<div></div>'}
     </div>
   `).join('');
 }
+function validateSlabDate(el){
+  const v=el.value.trim();
+  if(!v){el.style.borderColor='';return;}
+  const ok=/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v);
+  el.style.borderColor=ok?'var(--green)':'var(--red)';
+}
 function addSlabRow(){
   const slabs=readSlabsFromDOM();
-  slabs.push({upToYears:'',rate:''});
+  slabs.push({fromDate:'',toDate:'',rate:''});
   renderSlabRows(slabs);
 }
 function removeSlabRow(i){
@@ -975,20 +1014,13 @@ function removeSlabRow(i){
   slabs.splice(i,1);
   renderSlabRows(slabs);
 }
-function updateSlabLabel(i){
-  // Re-render labels after value changes
-  const slabs=readSlabsFromDOM();
-  renderSlabRows(slabs);
-  // Restore focus
-  const el=document.getElementById('slab_upto_'+i);
-  if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}
-}
 function readSlabsFromDOM(){
-  const rows=document.getElementById('slabRows').querySelectorAll('[id^="slab_upto_"]');
+  const rows=document.getElementById('slabRows').querySelectorAll('[id^="slab_from_"]');
   const slabs=[];
   rows.forEach((el,i)=>{
     slabs.push({
-      upToYears:document.getElementById('slab_upto_'+i).value,
+      fromDate:document.getElementById('slab_from_'+i).value.trim(),
+      toDate:document.getElementById('slab_to_'+i).value.trim(),
       rate:document.getElementById('slab_rate_'+i).value,
     });
   });
@@ -1000,7 +1032,7 @@ function openAddRate(){
   document.getElementById('modalTitle').textContent='Add Commission Rate';
   ['m_amc','m_fund','m_notes'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('m_cat').value='Equity';
-  renderSlabRows([{upToYears:'',rate:''}]);
+  renderSlabRows([{fromDate:'',toDate:'',rate:''}]);
   document.getElementById('rateModal').classList.add('open');
 }
 function editRate(i){
@@ -1011,7 +1043,7 @@ function editRate(i){
   document.getElementById('m_cat').value=r.category||'Equity';
   document.getElementById('m_notes').value=r.notes||'';
   // Migrate legacy flat-rate records to slab format for editing
-  const slabs=r.slabs&&r.slabs.length ? r.slabs : [{upToYears:'',rate:r.trail||''}];
+  const slabs=r.slabs&&r.slabs.length ? r.slabs.map(s=>({fromDate:s.fromDate||'',toDate:s.toDate||'',rate:s.rate})) : [{fromDate:'',toDate:'',rate:r.trail||''}];
   renderSlabRows(slabs);
   document.getElementById('rateModal').classList.add('open');
 }
@@ -1021,14 +1053,23 @@ function saveRate(){
   if(!amc||!fund){toast('AMC and Fund are required','error');return}
   const rawSlabs=readSlabsFromDOM().filter(s=>String(s.rate).trim()!=='');
   if(!rawSlabs.length){toast('Add at least one trail % slab','error');return}
-  // Validate: all slabs except last must have upToYears
-  for(let i=0;i<rawSlabs.length-1;i++){
-    if(!rawSlabs[i].upToYears){toast(`Slab ${i+1}: set "up to year" (only the last slab can be open-ended)`,'error');return}
+  // Validate: all slabs must have a fromDate; toDate blank = open-ended (only valid on last slab)
+  const dateRe=/^\d{1,2}\/\d{1,2}\/\d{4}$/;
+  for(let i=0;i<rawSlabs.length;i++){
+    if(!rawSlabs[i].fromDate||!dateRe.test(rawSlabs[i].fromDate)){
+      toast(`Slab ${i+1}: enter a valid From date (DD/MM/YYYY)`,'error');return;
+    }
+    if(rawSlabs[i].toDate&&!dateRe.test(rawSlabs[i].toDate)){
+      toast(`Slab ${i+1}: To date must be DD/MM/YYYY or leave blank for open-ended`,'error');return;
+    }
+    if(i<rawSlabs.length-1&&!rawSlabs[i].toDate){
+      toast(`Slab ${i+1}: only the last slab can have a blank To date`,'error');return;
+    }
   }
-  // Sort slabs ascending by upToYears (open-ended last)
-  const sorted=[...rawSlabs.filter(s=>s.upToYears!='')].sort((a,b)=>+a.upToYears-+b.upToYears);
-  const openEnded=rawSlabs.filter(s=>s.upToYears=='');
-  const finalSlabs=[...sorted,...openEnded].map(s=>({upToYears:s.upToYears===''?null:+s.upToYears,rate:+s.rate||0}));
+  // Sort slabs by fromDate ascending
+  function parseDMY(s){const m=s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);return m?new Date(+m[3],+m[2]-1,+m[1]):new Date(0);}
+  const finalSlabs=[...rawSlabs].sort((a,b)=>parseDMY(a.fromDate)-parseDMY(b.fromDate))
+    .map(s=>({fromDate:s.fromDate,toDate:s.toDate||'',rate:+s.rate||0}));
   // Keep legacy .trail = first slab rate for backward compat with exports
   const rate={
     amc,fund,
@@ -1095,14 +1136,15 @@ function exportRates(){
   // Export each slab as a separate row so CSV is human-editable and re-importable
   const rows=[];
   S.rates.forEach(r=>{
-    const slabs=r.slabs&&r.slabs.length ? r.slabs : [{upToYears:null,rate:+r.trail||0}];
+    const slabs=r.slabs&&r.slabs.length ? r.slabs.map(s=>({fromDate:s.fromDate||'',toDate:s.toDate||'',rate:s.rate})) : [{fromDate:'',toDate:'',rate:+r.trail||0}];
     slabs.forEach((s,i)=>{
       rows.push({
         'AMC':r.amc,
         'Fund':r.fund,
         'Category':r.category||'',
         'Slab Index':i+1,
-        'Up To Year (blank=forever)':s.upToYears!=null?s.upToYears:'',
+        'From Date (DD/MM/YYYY)':s.fromDate||'',
+        'To Date (DD/MM/YYYY, blank=present)':s.toDate||'',
         'Trail %':s.rate,
         'Notes':i===0?(r.notes||''):'',
       });
@@ -1128,8 +1170,8 @@ function handleRateImport(e){
     const hdrs=raw[hdrIdx].map(c=>String(c||'').trim());
     const rows=raw.slice(hdrIdx+1).map(row=>{const o={};hdrs.forEach((h,i)=>{if(h)o[h]=row[i]??''});return o});
 
-    // Detect format: new slab format has "Slab Index" or "Up To Year" column
-    const isSlabFormat=hdrs.some(h=>h.toLowerCase().includes('slab')||h.toLowerCase().includes('up to'));
+    // Detect format: new slab format has "Slab Index", "From Date", or "Up To Year" (legacy) column
+    const isSlabFormat=hdrs.some(h=>h.toLowerCase().includes('slab')||h.toLowerCase().includes('up to')||h.toLowerCase().includes('from date'));
 
     const rateMap={};  // amc||fund → {meta, slabs[]}
     let added=0;
@@ -1142,22 +1184,24 @@ function handleRateImport(e){
 
       if(isSlabFormat){
         if(!rateMap[key]) rateMap[key]={amc,fund,category:n(r['Category']||r['category']||''),notes:n(r['Notes']||r['notes']||''),slabs:[]};
-        const upToRaw=r['Up To Year (blank=forever)']||r['Up To Year']||r['upToYear']||'';
+        const fromDate=n(r['From Date (DD/MM/YYYY)']||r['From Date']||r['fromDate']||'');
+        const toDate=n(r['To Date (DD/MM/YYYY, blank=present)']||r['To Date']||r['toDate']||'');
         const rate=parseFloat(r['Trail %']||r['Trail']||r['trail']||0);
-        rateMap[key].slabs.push({upToYears:upToRaw===''||upToRaw===null?null:+upToRaw, rate});
+        rateMap[key].slabs.push({fromDate,toDate,rate});
       } else {
-        // Legacy flat-rate CSV — single slab
+        // Legacy flat-rate CSV — single open-ended slab
         const trail=parseFloat(r['Trail %']||r['Trail']||r['trail']||0);
-        rateMap[key]={amc,fund,category:n(r['Category']||r['Fund Category']||r['category']),notes:n(r['Notes']||r['notes']||''),slabs:[{upToYears:null,rate:trail}],trail,effectiveFrom:n(r['Effective From']||'')};
+        rateMap[key]={amc,fund,category:n(r['Category']||r['Fund Category']||r['category']),notes:n(r['Notes']||r['notes']||''),slabs:[{fromDate:'',toDate:'',rate:trail}],trail,effectiveFrom:n(r['Effective From']||'')};
       }
     });
 
     Object.values(rateMap).forEach(entry=>{
       // Sort slabs: bounded first, open-ended last
       entry.slabs.sort((a,b)=>{
-        if(a.upToYears==null) return 1;
-        if(b.upToYears==null) return -1;
-        return a.upToYears-b.upToYears;
+        const parse=s=>{const m=s&&s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);return m?new Date(+m[3],+m[2]-1,+m[1]):new Date(0);};
+        if(!a.fromDate) return 1;
+        if(!b.fromDate) return -1;
+        return parse(a.fromDate)-parse(b.fromDate);
       });
       entry.trail=entry.slabs[0].rate; // legacy compat
       const ex=S.rates.findIndex(x=>n(x.amc).toLowerCase()===entry.amc.toLowerCase()&&n(x.fund).toLowerCase()===entry.fund.toLowerCase());
