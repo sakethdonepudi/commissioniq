@@ -298,7 +298,7 @@ tbody tr:last-child{border-bottom:none}
 
 <!-- ═══════════════ RATE MODAL ═══════════════ -->
 <div class="modal-overlay" id="rateModal">
-  <div class="modal">
+  <div class="modal" style="max-width:560px">
     <div class="modal-title" id="modalTitle">Add Commission Rate</div>
     <div class="grid-2" style="gap:.85rem">
       <div class="form-group" style="grid-column:1/-1">
@@ -317,18 +317,23 @@ tbody tr:last-child{border-bottom:none}
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Trail % Annual</label>
-        <input class="form-input" id="m_trail" type="number" step="0.001" min="0" placeholder="1.00"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Effective From</label>
-        <input class="form-input" id="m_from" type="date"/>
-      </div>
-      <div class="form-group">
         <label class="form-label">Notes</label>
         <input class="form-input" id="m_notes" placeholder="Optional"/>
       </div>
     </div>
+
+    <!-- Tenure-based slab table -->
+    <div style="margin-top:1rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
+        <label class="form-label" style="margin:0">Trail % Slabs — by years invested</label>
+        <button class="btn btn-outline btn-sm" onclick="addSlabRow()" type="button">+ Add Slab</button>
+      </div>
+      <div style="font-size:.73rem;color:var(--text-muted);margin-bottom:.6rem">
+        Define rate slabs by tenure. "Up to year" = exclusive upper bound (e.g. 4 means years 0–4). Last slab = applies forever after. Single slab = flat rate (legacy behaviour).
+      </div>
+      <div id="slabRows" style="display:flex;flex-direction:column;gap:.4rem"></div>
+    </div>
+
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveRate()">Save Rate</button>
@@ -344,12 +349,20 @@ const PAGES=['dashboard','history','upload','rates','detail'];
 
 // Default Tata rates — seeded on first load if no rates exist yet
 const DEFAULT_RATES=[
-  {amc:'Tata',fund:'Banking and Financial Services Reg-G',category:'Equity',trail:0,effectiveFrom:'',notes:''},
-  {amc:'Tata',fund:'India Pharma & Healthcare Reg-G',     category:'Equity',trail:0,effectiveFrom:'',notes:''},
-  {amc:'Tata',fund:'Equity Savings Reg-G',                category:'Hybrid',trail:0,effectiveFrom:'',notes:''},
-  {amc:'Tata',fund:'Focused Reg-G',                       category:'Equity',trail:0,effectiveFrom:'',notes:''},
-  {amc:'Tata',fund:'Retirement Savings Fund -PP',          category:'Hybrid',trail:0,effectiveFrom:'',notes:''},
+  {amc:'Tata',fund:'Banking and Financial Services Reg-G',category:'Equity',trail:0,slabs:[{upToYears:null,rate:0}],effectiveFrom:'',notes:'Fill in your actual rates'},
+  {amc:'Tata',fund:'India Pharma & Healthcare Reg-G',     category:'Equity',trail:0,slabs:[{upToYears:null,rate:0}],effectiveFrom:'',notes:'Fill in your actual rates'},
+  {amc:'Tata',fund:'Equity Savings Reg-G',                category:'Hybrid',trail:0,slabs:[{upToYears:null,rate:0}],effectiveFrom:'',notes:'Fill in your actual rates'},
+  {amc:'Tata',fund:'Focused Reg-G',                       category:'Equity',trail:0,slabs:[{upToYears:4,rate:1.20},{upToYears:null,rate:1.00}],effectiveFrom:'',notes:'Example: 1.20% for first 4 yrs, 1.00% after'},
+  {amc:'Tata',fund:'Retirement Savings Fund -PP',          category:'Hybrid',trail:0,slabs:[{upToYears:null,rate:0}],effectiveFrom:'',notes:'Fill in your actual rates'},
 ];
+
+// Migrate old flat-rate records (no slabs) to slab format seamlessly
+function migrateRate(r){
+  if(!r.slabs||!r.slabs.length){
+    return{...r, slabs:[{upToYears:null,rate:+r.trail||0}]};
+  }
+  return r;
+}
 
 function loadRates(){
   const saved=localStorage.getItem('ciq_rates');
@@ -358,7 +371,7 @@ function loadRates(){
     localStorage.setItem('ciq_rates',JSON.stringify(DEFAULT_RATES));
     return JSON.parse(JSON.stringify(DEFAULT_RATES));
   }
-  return JSON.parse(saved);
+  return JSON.parse(saved).map(migrateRate);
 }
 
 let S={
@@ -458,12 +471,52 @@ function processReports(){
   if(!reportMonth){toast('Please select a report month','error');return}
   const arnFilter=n(document.getElementById('arnFilter').value).toLowerCase();
 
-  function findRate(amc,fund){
-    // Exact match only — AMC + Fund must both match
-    const a=amc.toLowerCase(), f=fund.toLowerCase();
-    const m=S.rates.find(r=>n(r.amc).toLowerCase()===a && n(r.fund).toLowerCase()===f);
-    return m ? {trail:+m.trail||0} : null;
+  // ── Parse "Invested Since" date from AUM row (DD-MMM-YYYY or DD/MM/YYYY) ──
+  function parseInvestedSince(raw){
+    if(!raw) return null;
+    const s=String(raw).trim();
+    // DD-MMM-YYYY e.g. 15-Jan-2022
+    const m1=s.match(/^(\d{1,2})[\/\-]([A-Za-z]{3})[\/\-](\d{4})$/);
+    if(m1){
+      const months={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+      const mo=months[m1[2].toLowerCase()];
+      if(mo!==undefined) return new Date(+m1[3],mo,+m1[1]);
+    }
+    // DD/MM/YYYY
+    const m2=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if(m2) return new Date(+m2[3],+m2[2]-1,+m2[1]);
+    // YYYY-MM-DD fallback
+    const d=new Date(s);
+    return isNaN(d)?null:d;
   }
+
+  // ── Given a rate entry and how many months invested, pick the right slab trail % ──
+  function resolveSlabRate(rateEntry, monthsInvested){
+    if(!rateEntry) return null;
+    const slabs=rateEntry.slabs;
+    // Legacy flat-rate records (no slabs array) — just return trail
+    if(!slabs||!slabs.length) return +rateEntry.trail||0;
+    const yearsInvested=monthsInvested/12;
+    // Slabs are sorted ascending by upToYears; last slab = open-ended
+    for(let i=0;i<slabs.length;i++){
+      const s=slabs[i];
+      const isLast=i===slabs.length-1;
+      if(isLast || yearsInvested < +s.upToYears) return +s.rate||0;
+    }
+    return +slabs[slabs.length-1].rate||0;
+  }
+
+  function findRateEntry(amc,fund){
+    const a=amc.toLowerCase(), f=fund.toLowerCase();
+    return S.rates.find(r=>n(r.amc).toLowerCase()===a && n(r.fund).toLowerCase()===f)||null;
+  }
+
+  // Parse report month as a Date (first day of month) for tenure calc
+  const reportDate=(()=>{
+    if(!reportMonth) return new Date();
+    const p=reportMonth.split('-');
+    return p.length===2 ? new Date(+p[0],+p[1]-1,1) : new Date();
+  })();
 
   // ── STEP 1: Build folio-level records (for detail view) ──────────────
   const folioRows=[];
@@ -477,12 +530,14 @@ function processReports(){
     const category=n(r['Fund Category']);
     const fundClass=n(r['Fund Class']);
     const arn=n(r['ARN']);
+    const investedSinceRaw=r['Invested Since']||r['invested_since']||r['Invested since']||'';
+    const investedSince=parseInvestedSince(investedSinceRaw);
     if(!folio||isNaN(aum)||!amc||amc.toLowerCase().includes('total')) return;
     if(arnFilter && !arn.toLowerCase().includes(arnFilter)) return;
-    folioRows.push({folio,investor,group_code:grpCode,amc,fund,category,fund_class:fundClass,arn,aum});
+    folioRows.push({folio,investor,group_code:grpCode,amc,fund,category,fund_class:fundClass,arn,aum,investedSince});
   });
 
-  // ── STEP 2: Group by AMC + Fund → sum AUM → apply rate ONCE ─────────
+  // ── STEP 2: Group by AMC + Fund ─────────────────────────────────────
   const fundMap={};
   folioRows.forEach(r=>{
     const k=r.amc+'||'+r.fund;
@@ -495,27 +550,47 @@ function processReports(){
     fundMap[k].folios.push(r);
   });
 
-  // ── STEP 3: Apply rate at Fund level → Commission = Fund AUM × Rate ÷ 12
+  // ── STEP 3: Apply slab rate per folio; aggregate to fund level ───────
   const fundResults=[];
   Object.values(fundMap).forEach(f=>{
-    const rate=findRate(f.amc,f.fund);
-    const trail=rate ? (f.totalAUM * rate.trail / 100 / 12) : 0;
+    const rateEntry=findRateEntry(f.amc,f.fund);
+    const foliosWithRates=f.folios.map(fo=>{
+      let appliedRate=null;
+      let slabLabel=null;
+      if(rateEntry){
+        const monthsInvested=fo.investedSince
+          ? Math.max(0,Math.round((reportDate - fo.investedSince)/(1000*60*60*24*30.44)))
+          : null;
+        appliedRate=resolveSlabRate(rateEntry, monthsInvested!==null ? monthsInvested : 0);
+        // Build human-readable slab label for display
+        if(rateEntry.slabs&&rateEntry.slabs.length>1&&fo.investedSince){
+          const yrs=(monthsInvested/12).toFixed(1);
+          slabLabel=`Yr ${yrs} → ${appliedRate}%`;
+        }
+      }
+      return{
+        ...fo,
+        report_month:reportMonth,
+        trail_rate:appliedRate,
+        slab_label:slabLabel,
+        trail_monthly:appliedRate!=null ? (fo.aum * appliedRate / 100 / 12) : 0,
+        rate_found:!!rateEntry,
+      };
+    });
+
+    // Fund-level totals = sum of folio-level (correct because each folio may have different slab rate)
+    const totalTrail=foliosWithRates.reduce((s,fo)=>s+(fo.trail_monthly||0),0);
+    // Effective blended rate for display
+    const blendedRate=f.totalAUM>0 ? (totalTrail*12/f.totalAUM*100) : (rateEntry?resolveSlabRate(rateEntry,0):null);
+
     fundResults.push({
       report_month: reportMonth,
       amc: f.amc, fund: f.fund, category: f.category, fund_class: f.fund_class,
       total_aum: f.totalAUM, folio_count: f.folioCount,
-      trail_rate: rate ? rate.trail : null,
-      trail_monthly: trail,
-      rate_found: !!rate,
-      // keep folio breakdown for detail view
-      _folios: f.folios.map(fo=>({
-        ...fo,
-        report_month: reportMonth,
-        trail_rate: rate ? rate.trail : null,
-        // each folio's proportional trail = folio AUM / fund AUM × fund trail
-        trail_monthly: rate ? (fo.aum * rate.trail / 100 / 12) : 0,
-        rate_found: !!rate,
-      })),
+      trail_rate: rateEntry ? blendedRate : null,
+      trail_monthly: totalTrail,
+      rate_found: !!rateEntry,
+      _folios: foliosWithRates,
     });
   });
 
@@ -774,7 +849,7 @@ function renderDetailTable(){
     <div class="table-wrap"><table>
       <thead><tr>
         <th>Folio No.</th><th>Investor</th><th>Group</th><th>AMC</th><th>Fund</th>
-        <th>Category</th><th>AUM (₹)</th><th>Trail % Ann.</th><th>Trail Monthly (₹)</th><th>Annual Run Rate (₹)</th><th>Status</th>
+        <th>Category</th><th>Invested Since</th><th>AUM (₹)</th><th>Trail % Applied</th><th>Trail Monthly (₹)</th><th>Annual Run Rate (₹)</th><th>Status</th>
       </tr></thead>
       <tbody>${data.map(r=>`<tr>
         <td style="font-family:'DM Mono',monospace;font-size:.76rem">${r.folio}</td>
@@ -783,8 +858,9 @@ function renderDetailTable(){
         <td class="td-amc" style="font-size:.77rem">${r.amc}</td>
         <td style="font-size:.75rem;max-width:200px">${r.fund}</td>
         <td><span class="pill pill-blue">${r.category||'—'}</span></td>
+        <td style="font-size:.75rem;color:var(--text-muted)">${r.investedSince?r.investedSince.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'—'}</td>
         <td class="td-num">${fmtN(r.aum)}</td>
-        <td class="td-num">${r.trail_rate!=null?r.trail_rate.toFixed(3)+'%':'—'}</td>
+        <td class="td-num">${r.trail_rate!=null?(r.trail_rate.toFixed(3)+'%'+(r.slab_label?'<br><span style="font-size:.7rem;color:var(--text-muted)">'+r.slab_label+'</span>':'')):'—'}</td>
         <td class="td-num" style="color:var(--green);font-weight:600">${fmtN(r.trail_monthly)}</td>
         <td class="td-num" style="color:var(--text-muted)">${fmtN((r.trail_monthly||0)*12)}</td>
         <td>${r.rate_found?'<span class="pill pill-green">✓</span>':'<span class="pill pill-red">No Rate</span>'}</td>
@@ -807,38 +883,137 @@ function renderRateTable(){
   document.getElementById('rateCount').textContent=S.rates.length+' rates';
   if(!rows.length){document.getElementById('rateTable').innerHTML='<div class="empty-state"><div class="icon">⚙️</div><p>No rates yet. Click "+ Add Rate" to begin, or import a CSV.</p></div>';return}
   document.getElementById('rateTable').innerHTML=`<div class="table-wrap"><table>
-    <thead><tr><th>AMC</th><th>Fund</th><th>Category</th><th>Trail % Annual</th><th>Monthly (÷12)</th><th>Effective From</th><th>Notes</th><th>Actions</th></tr></thead>
-    <tbody>${rows.map(r=>{const ri=S.rates.indexOf(r);return`<tr>
-      <td class="td-amc">${r.amc}</td>
-      <td style="font-size:.79rem">${r.fund}</td>
-      <td><span class="pill pill-blue">${r.category||'—'}</span></td>
-      <td class="td-num" style="color:var(--green);font-weight:700">${(+r.trail||0).toFixed(3)}%</td>
-      <td class="td-num" style="color:var(--text-muted)">${(+r.trail||0)>0?((+r.trail)/12).toFixed(4)+'%':'—'}</td>
-      <td style="font-size:.77rem">${r.effectiveFrom||'—'}</td>
-      <td style="font-size:.77rem;color:var(--text-muted)">${r.notes||'—'}</td>
-      <td><div style="display:flex;gap:.3rem">
-        <button class="btn btn-outline btn-sm" onclick="editRate(${ri})">Edit</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteRate(${ri})">Del</button>
-      </div></td>
-    </tr>`}).join('')}</tbody>
+    <thead><tr><th>AMC</th><th>Fund</th><th>Category</th><th>Trail % Slabs</th><th>Notes</th><th>Actions</th></tr></thead>
+    <tbody>${rows.map(r=>{const ri=S.rates.indexOf(r);
+      // Build slab display string
+      let slabDisplay='—';
+      if(r.slabs&&r.slabs.length){
+        if(r.slabs.length===1){
+          slabDisplay=`<span style="color:var(--green);font-weight:700">${(+r.slabs[0].rate||0).toFixed(3)}%</span> <span style="color:var(--text-muted);font-size:.75rem">flat</span>`;
+        } else {
+          slabDisplay=r.slabs.map((s,i)=>{
+            const from=i===0?'Yr 0':'Yr '+(r.slabs[i-1].upToYears||'?');
+            const to=s.upToYears!=null?'–'+s.upToYears:'+'  ;
+            return `<span style="font-size:.76rem;white-space:nowrap"><span style="color:var(--text-muted)">${from}${to}:</span> <b style="color:var(--green)">${(+s.rate).toFixed(2)}%</b></span>`;
+          }).join('<br>');
+        }
+      } else if(r.trail){
+        slabDisplay=`<span style="color:var(--green);font-weight:700">${(+r.trail||0).toFixed(3)}%</span> <span style="color:var(--text-muted);font-size:.75rem">legacy</span>`;
+      }
+      return`<tr>
+        <td class="td-amc">${r.amc}</td>
+        <td style="font-size:.79rem">${r.fund}</td>
+        <td><span class="pill pill-blue">${r.category||'—'}</span></td>
+        <td style="line-height:1.6">${slabDisplay}</td>
+        <td style="font-size:.77rem;color:var(--text-muted)">${r.notes||'—'}</td>
+        <td><div style="display:flex;gap:.3rem">
+          <button class="btn btn-outline btn-sm" onclick="editRate(${ri})">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteRate(${ri})">Del</button>
+        </div></td>
+      </tr>`;}).join('')}</tbody>
   </table></div>`;
 }
 
-function openAddRate(){S.editIdx=-1;document.getElementById('modalTitle').textContent='Add Rate';['m_amc','m_fund','m_trail','m_from','m_notes'].forEach(id=>document.getElementById(id).value='');document.getElementById('rateModal').classList.add('open')}
+// ── Slab row helpers ──────────────────────────────────────────────────
+function renderSlabRows(slabs){
+  const container=document.getElementById('slabRows');
+  if(!slabs||!slabs.length) slabs=[{upToYears:'',rate:''}];
+  container.innerHTML=slabs.map((s,i)=>`
+    <div style="display:flex;gap:.5rem;align-items:center" id="slab_row_${i}">
+      <div style="flex:1">
+        <input class="form-input" id="slab_upto_${i}" type="number" min="0" step="0.5"
+          placeholder="${i===0?'e.g. 4 (years 0–4)':'Leave blank = forever'}"
+          value="${s.upToYears||''}"
+          style="font-size:.82rem"
+          oninput="updateSlabLabel(${i})"/>
+      </div>
+      <div style="flex-shrink:0;font-size:.78rem;color:var(--text-muted);width:72px;text-align:center" id="slab_lbl_${i}">
+        ${i===0?'Year 0 →':'Year '+((slabs[i-1]?.upToYears||'?'))+' →'}
+      </div>
+      <div style="flex:1">
+        <input class="form-input" id="slab_rate_${i}" type="number" min="0" step="0.001"
+          placeholder="Trail % e.g. 1.20"
+          value="${s.rate||''}"
+          style="font-size:.82rem"/>
+      </div>
+      <div style="color:var(--text-muted);font-size:.78rem;width:24px;text-align:center">%</div>
+      ${slabs.length>1?`<button class="btn btn-danger btn-sm" onclick="removeSlabRow(${i})" type="button" style="padding:.2rem .5rem">✕</button>`:'<div style="width:46px"></div>'}
+    </div>
+  `).join('');
+}
+function addSlabRow(){
+  const slabs=readSlabsFromDOM();
+  slabs.push({upToYears:'',rate:''});
+  renderSlabRows(slabs);
+}
+function removeSlabRow(i){
+  const slabs=readSlabsFromDOM();
+  slabs.splice(i,1);
+  renderSlabRows(slabs);
+}
+function updateSlabLabel(i){
+  // Re-render labels after value changes
+  const slabs=readSlabsFromDOM();
+  renderSlabRows(slabs);
+  // Restore focus
+  const el=document.getElementById('slab_upto_'+i);
+  if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}
+}
+function readSlabsFromDOM(){
+  const rows=document.getElementById('slabRows').querySelectorAll('[id^="slab_upto_"]');
+  const slabs=[];
+  rows.forEach((el,i)=>{
+    slabs.push({
+      upToYears:document.getElementById('slab_upto_'+i).value,
+      rate:document.getElementById('slab_rate_'+i).value,
+    });
+  });
+  return slabs;
+}
+
+function openAddRate(){
+  S.editIdx=-1;
+  document.getElementById('modalTitle').textContent='Add Commission Rate';
+  ['m_amc','m_fund','m_notes'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('m_cat').value='Equity';
+  renderSlabRows([{upToYears:'',rate:''}]);
+  document.getElementById('rateModal').classList.add('open');
+}
 function editRate(i){
   S.editIdx=i;const r=S.rates[i];
-  document.getElementById('modalTitle').textContent='Edit Rate';
-  document.getElementById('m_amc').value=r.amc;document.getElementById('m_fund').value=r.fund;
+  document.getElementById('modalTitle').textContent='Edit Commission Rate';
+  document.getElementById('m_amc').value=r.amc;
+  document.getElementById('m_fund').value=r.fund;
   document.getElementById('m_cat').value=r.category||'Equity';
-  document.getElementById('m_trail').value=r.trail;
-  document.getElementById('m_from').value=r.effectiveFrom||'';document.getElementById('m_notes').value=r.notes||'';
+  document.getElementById('m_notes').value=r.notes||'';
+  // Migrate legacy flat-rate records to slab format for editing
+  const slabs=r.slabs&&r.slabs.length ? r.slabs : [{upToYears:'',rate:r.trail||''}];
+  renderSlabRows(slabs);
   document.getElementById('rateModal').classList.add('open');
 }
 function saveRate(){
   const amc=document.getElementById('m_amc').value.trim();
   const fund=document.getElementById('m_fund').value.trim();
   if(!amc||!fund){toast('AMC and Fund are required','error');return}
-  const rate={amc,fund,category:document.getElementById('m_cat').value,trail:+document.getElementById('m_trail').value||0,effectiveFrom:document.getElementById('m_from').value,notes:document.getElementById('m_notes').value};
+  const rawSlabs=readSlabsFromDOM().filter(s=>String(s.rate).trim()!=='');
+  if(!rawSlabs.length){toast('Add at least one trail % slab','error');return}
+  // Validate: all slabs except last must have upToYears
+  for(let i=0;i<rawSlabs.length-1;i++){
+    if(!rawSlabs[i].upToYears){toast(`Slab ${i+1}: set "up to year" (only the last slab can be open-ended)`,'error');return}
+  }
+  // Sort slabs ascending by upToYears (open-ended last)
+  const sorted=[...rawSlabs.filter(s=>s.upToYears!='')].sort((a,b)=>+a.upToYears-+b.upToYears);
+  const openEnded=rawSlabs.filter(s=>s.upToYears=='');
+  const finalSlabs=[...sorted,...openEnded].map(s=>({upToYears:s.upToYears===''?null:+s.upToYears,rate:+s.rate||0}));
+  // Keep legacy .trail = first slab rate for backward compat with exports
+  const rate={
+    amc,fund,
+    category:document.getElementById('m_cat').value,
+    notes:document.getElementById('m_notes').value,
+    slabs:finalSlabs,
+    trail:finalSlabs[0].rate, // legacy compat
+    effectiveFrom:'',
+  };
   if(S.editIdx>=0) S.rates[S.editIdx]=rate; else S.rates.push(rate);
   localStorage.setItem('ciq_rates',JSON.stringify(S.rates));
   closeModal();renderRateTable();
@@ -859,7 +1034,7 @@ function exportCommission(){
     amc:r.amc, fund:r.fund, category:r.category, fund_class:r.fund_class,
     folio_count:r.folio_count||r.folios||1,
     aum:r.aum||r.total_aum||0,
-    trail_rate:r.trail_rate,
+    trail_rate:r.trail_rate!=null?r.trail_rate.toFixed(4):'',
     trail_monthly:(r.trail_monthly||0).toFixed(2),
     annual_run_rate:((r.trail_monthly||0)*12).toFixed(2),
   }));
@@ -870,13 +1045,47 @@ function exportCommission(){
 
 function exportFullHistory(){
   if(!S.allHistory.length){toast('No history to export','error');return}
-  dlCSV(S.allHistory.map(r=>({report_month:r.report_month,folio:r.folio,investor:r.investor,group_code:r.group_code,amc:r.amc,fund:r.fund,category:r.category,aum:r.aum,trail_rate:r.trail_rate,trail_monthly:(r.trail_monthly||0).toFixed(2)})),'CommissionIQ_Full_History.csv');
+  // Include invested_since so slab rates can be re-derived if needed
+  const rows=S.allHistory.map(r=>({
+    report_month:r.report_month,
+    folio:r.folio,
+    investor:r.investor,
+    group_code:r.group_code,
+    amc:r.amc,
+    fund:r.fund,
+    category:r.category,
+    invested_since:r.investedSince?r.investedSince.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).replace(/ /g,'-'):'',
+    aum:r.aum,
+    trail_rate:r.trail_rate!=null?r.trail_rate.toFixed(4):'',
+    slab_label:r.slab_label||'',
+    trail_monthly:(r.trail_monthly||0).toFixed(2),
+    annual_run_rate:((r.trail_monthly||0)*12).toFixed(2),
+  }));
+  dlCSV(rows,'CommissionIQ_Full_History.csv');
+  toast('Full history exported with invested-since dates','success');
 }
 
 function exportDetail(){exportCommission()}
 
 function exportRates(){
-  dlCSV(S.rates.map(r=>({'AMC':r.amc,'Fund':r.fund,'Category':r.category,'Trail %':r.trail,'Effective From':r.effectiveFrom,'Notes':r.notes})),'CommissionIQ_Rates.csv');
+  // Export each slab as a separate row so CSV is human-editable and re-importable
+  const rows=[];
+  S.rates.forEach(r=>{
+    const slabs=r.slabs&&r.slabs.length ? r.slabs : [{upToYears:null,rate:+r.trail||0}];
+    slabs.forEach((s,i)=>{
+      rows.push({
+        'AMC':r.amc,
+        'Fund':r.fund,
+        'Category':r.category||'',
+        'Slab Index':i+1,
+        'Up To Year (blank=forever)':s.upToYears!=null?s.upToYears:'',
+        'Trail %':s.rate,
+        'Notes':i===0?(r.notes||''):'',
+      });
+    });
+  });
+  dlCSV(rows,'CommissionIQ_Rates.csv');
+  toast('Rates exported — each slab is a separate row','success');
 }
 
 function importRates(){document.getElementById('rateImportFile').click()}
@@ -886,7 +1095,6 @@ function handleRateImport(e){
   reader.onload=ev=>{
     const wb=XLSX.read(ev.target.result,{type:'binary'});
     const ws=wb.Sheets[wb.SheetNames[0]];
-    // Smart header detection for rate import too
     const raw=XLSX.utils.sheet_to_json(ws,{defval:'',header:1});
     let hdrIdx=0;
     for(let i=0;i<Math.min(5,raw.length);i++){
@@ -895,19 +1103,44 @@ function handleRateImport(e){
     }
     const hdrs=raw[hdrIdx].map(c=>String(c||'').trim());
     const rows=raw.slice(hdrIdx+1).map(row=>{const o={};hdrs.forEach((h,i)=>{if(h)o[h]=row[i]??''});return o});
+
+    // Detect format: new slab format has "Slab Index" or "Up To Year" column
+    const isSlabFormat=hdrs.some(h=>h.toLowerCase().includes('slab')||h.toLowerCase().includes('up to'));
+
+    const rateMap={};  // amc||fund → {meta, slabs[]}
     let added=0;
+
     rows.forEach(r=>{
       const amc=n(r['AMC']||r['amc']);
       const fund=n(r['Fund']||r['fund']||r['AMC FUND']||r['AMC Fund']);
-      const trail=parseFloat(r['Trail %']||r['Trail']||r['trail']||0);
-      if(amc&&fund){
-        // Update if already exists, else add
-        const ex=S.rates.findIndex(x=>n(x.amc).toLowerCase()===amc.toLowerCase()&&n(x.fund).toLowerCase()===fund.toLowerCase());
-        const entry={amc,fund,category:n(r['Category']||r['Fund Category']||r['category']),trail,effectiveFrom:n(r['Effective From']||''),notes:n(r['Notes']||r['notes']||'')};
-        if(ex>=0) S.rates[ex]=entry; else S.rates.push(entry);
-        added++;
+      if(!amc||!fund) return;
+      const key=amc.toLowerCase()+'||'+fund.toLowerCase();
+
+      if(isSlabFormat){
+        if(!rateMap[key]) rateMap[key]={amc,fund,category:n(r['Category']||r['category']||''),notes:n(r['Notes']||r['notes']||''),slabs:[]};
+        const upToRaw=r['Up To Year (blank=forever)']||r['Up To Year']||r['upToYear']||'';
+        const rate=parseFloat(r['Trail %']||r['Trail']||r['trail']||0);
+        rateMap[key].slabs.push({upToYears:upToRaw===''||upToRaw===null?null:+upToRaw, rate});
+      } else {
+        // Legacy flat-rate CSV — single slab
+        const trail=parseFloat(r['Trail %']||r['Trail']||r['trail']||0);
+        rateMap[key]={amc,fund,category:n(r['Category']||r['Fund Category']||r['category']),notes:n(r['Notes']||r['notes']||''),slabs:[{upToYears:null,rate:trail}],trail,effectiveFrom:n(r['Effective From']||'')};
       }
     });
+
+    Object.values(rateMap).forEach(entry=>{
+      // Sort slabs: bounded first, open-ended last
+      entry.slabs.sort((a,b)=>{
+        if(a.upToYears==null) return 1;
+        if(b.upToYears==null) return -1;
+        return a.upToYears-b.upToYears;
+      });
+      entry.trail=entry.slabs[0].rate; // legacy compat
+      const ex=S.rates.findIndex(x=>n(x.amc).toLowerCase()===entry.amc.toLowerCase()&&n(x.fund).toLowerCase()===entry.fund.toLowerCase());
+      if(ex>=0) S.rates[ex]=entry; else S.rates.push(entry);
+      added++;
+    });
+
     localStorage.setItem('ciq_rates',JSON.stringify(S.rates));
     renderRateTable();
     toast(added+' rates imported','success');
