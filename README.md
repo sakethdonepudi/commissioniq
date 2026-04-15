@@ -3,7 +3,7 @@
 A **free, browser-based** tool to calculate expected trail and upfront commissions from your WealthMagic exports. No server, no login — runs entirely in your browser.
 
 ## 🔗 Live App
-> **[Open CommissionIQ](https://sakethdonepudi.github.io/commissioniq/)**  
+> **[Open CommissionIQ](www.commissionnnniq.in)**  
 > *(Replace with your actual GitHub Pages URL after deployment)*
 
 ---
